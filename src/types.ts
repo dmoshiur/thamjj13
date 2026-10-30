@@ -9,6 +9,14 @@ export enum UserRole {
   VISITOR = "VISITOR",
 }
 
+export type OtpPurpose =
+  | "ADMIN_LOGIN"
+  | "LOGIN_2FA"
+  | "BOOTSTRAP_SETUP"
+  | "PASSWORD_RESET"
+  | "USER_VERIFY"
+  | "EMAIL_VERIFY";
+
 export interface SecurityLog {
   id: string;
   userId?: string;
@@ -20,18 +28,38 @@ export interface SecurityLog {
   status: "SUCCESS" | "FAILED" | "SUSPICIOUS";
 }
 
+export interface Certificate {
+  id: string;
+  userId: string;
+  studentName: string;
+  courseId: string;
+  courseTitle: string;
+  issuedBy: string;
+  issuedAt: string;
+  issueDate?: string;
+  verificationHash?: string;
+  qrCodeUrl: string;
+  verified: boolean;
+}
+
 export interface UserProfile {
   id: string;
   username: string;
   email: string;
   role: UserRole;
   approved: boolean;
+  emailVerified?: boolean;
   phone: string;
   address: string;
+  bio?: string;
   profilePicture: string;
+  avatarUrl?: string;
+  enrolledCourses?: string[];
+  completedLessons?: string[];
+  badges?: string[];
+  certificates?: Certificate[];
   createdAt: string;
   loginHistory: SecurityLog[];
-  password?: string;
 }
 
 export interface VideoComment {
@@ -44,7 +72,7 @@ export interface VideoComment {
   likes: number;
   authorId?: string;
   likedBy?: string[];
-  replies?: any[];
+  replies?: VideoComment[];
   pinned?: boolean;
   hidden?: boolean;
 }
@@ -72,9 +100,12 @@ export interface Lesson {
   pdfName?: string;
   assignments?: {
     id: string;
+    userId?: string;
+    studentName?: string;
     title: string;
     description: string;
     submittedUrl?: string;
+    submittedAt?: string;
     grade?: string;
   }[];
 }
@@ -83,7 +114,7 @@ export interface MCQQuestion {
   id: string;
   question: string;
   options: string[];
-  correctAnswer: number; // Index
+  correctAnswer: number;
 }
 
 export interface Course {
@@ -104,25 +135,13 @@ export interface Course {
 export interface CourseProgress {
   userId: string;
   courseId: string;
-  completedLessons: string[]; // Lesson IDs
+  completedLessons: string[];
   testResult?: {
     score: number;
     passed: boolean;
     certificateId?: string;
     timestamp: string;
   };
-}
-
-export interface Certificate {
-  id: string;
-  userId: string;
-  studentName: string;
-  courseId: string;
-  courseTitle: string;
-  issuedBy: string;
-  issuedAt: string;
-  qrCodeUrl: string;
-  verified: boolean;
 }
 
 export interface ContactMessage {
@@ -136,11 +155,13 @@ export interface ContactMessage {
   attachmentName?: string;
   timestamp: string;
   isRead: boolean;
+  status?: string;
   replies: {
     id: string;
     sender: string;
     message: string;
     timestamp: string;
+    emailDelivered?: boolean;
   }[];
 }
 
@@ -183,27 +204,34 @@ export interface VisitorLog {
   lastVisit: string;
   referral: string;
   currentPage: string;
-  sessionDuration: number; // in seconds
+  sessionDuration: number;
   returningVisitor: boolean;
+}
+
+export interface SupportTicketReply {
+  id: string;
+  sender: string;
+  senderName: string;
+  senderRole: UserRole;
+  message: string;
+  content: string;
+  text?: string;
+  timestamp: string;
 }
 
 export interface SupportTicket {
   id: string;
   userId: string;
   username: string;
+  email?: string;
   subject: string;
   description: string;
+  message: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   category: "Technical" | "Billing" | "Course Help" | "Vulnerability Report";
   status: "OPEN" | "IN_PROGRESS" | "RESOLVED";
   createdAt: string;
-  replies: {
-    id: string;
-    senderName: string;
-    senderRole: UserRole;
-    content: string;
-    timestamp: string;
-  }[];
+  replies: SupportTicketReply[];
 }
 
 export interface CyberEvent {
@@ -212,7 +240,14 @@ export interface CyberEvent {
   description: string;
   date: string;
   time: string;
-  type: "Live Training" | "CTF Hacking Challenge" | "Cyber Security Seminar" | "Threat Briefing";
+  instructor?: string;
+  registrationLink?: string;
+  location?: string;
+  type:
+    | "Live Training"
+    | "CTF Hacking Challenge"
+    | "Cyber Security Seminar"
+    | "Threat Briefing";
   link?: string;
 }
 
@@ -228,14 +263,21 @@ export interface ApiKeyConfig {
 
 export interface FileVaultItem {
   id: string;
+  userId?: string;
   name: string;
+  fileName: string;
   size: string;
+  fileSize: string;
   mimeType: string;
+  fileType: string;
   encryptedUrl: string;
+  cloudinaryUrl: string;
+  aesHash: string;
   uploadedBy: string;
   role: UserRole;
   uploadedAt: string;
   downloads: number;
+  downloadCount: number;
 }
 
 export interface SystemHealthMetrics {
@@ -244,27 +286,54 @@ export interface SystemHealthMetrics {
   diskFree: number;
   activeConnections: number;
   uptime: string;
-  smtpStatus: "OK" | "WARNING" | "CRITICAL" | "UNCONFIGURED";
+  databaseEngine: string;
+  databaseStatus: "CONNECTED" | "LOCAL_REPLICA" | "ERROR";
+  resendStatus: "CONNECTED" | "UNCONFIGURED";
+  senderEmail: string;
   cloudinaryStatus: "CONNECTED" | "DISCONNECTED" | "UNCONFIGURED";
   backupsCount: number;
 }
 
-export interface SmtpConfig {
+export interface MailLog {
   id: string;
-  host: string;
-  port: number;
-  user: string;
-  pass?: string;
-  from?: string;
-  priority: number; // Higher is preferred
-  status: "ACTIVE" | "INACTIVE" | "FAILED";
+  recipient: string;
+  toEmail?: string;
+  subject: string;
+  category: string;
+  status: "SENT" | "SIMULATED" | "FAILED";
+  providerId?: string;
+  error?: string;
+  timestamp: string;
+  createdAt?: string;
+}
+
+export interface ResendConfig {
+  fromEmail: string;
+  fromName: string;
+  adminAlertEmail: string;
+  apiKeyConfigured: boolean;
+  apiKeySource?: "ENV" | "DATABASE" | "NONE";
+  source?: string;
+  maskedApiKey?: string;
+  apiKeyMasked?: string;
+}
+
+export interface CloudinaryConfig {
+  cloudName: string;
+  apiKey: string;
+  apiSecret?: string;
+  uploadPreset: string;
+  configured: boolean;
+  source?: "ENV" | "DATABASE" | "NONE";
 }
 
 export interface FIRDetails {
-  firNumber: string;
+  firNumber?: string;
   policeStation: string;
+  district?: string;
   accusedInfo?: string;
   officerDetails: string;
+  summary?: string;
   finalizedAt?: string;
   signature?: string;
   verificationCode?: string;
@@ -272,6 +341,7 @@ export interface FIRDetails {
 
 export interface Report {
   id: string;
+  trackingCode?: string;
   fullName: string;
   email: string;
   phone: string;
@@ -287,5 +357,6 @@ export interface Report {
   notes?: string;
   firNumber?: string;
   createdAt: string;
+  updatedAt?: string;
   firDetails?: FIRDetails;
 }

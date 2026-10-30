@@ -98,7 +98,7 @@ export default function CourseSystem({
         </p>
         {currentUser?.role === UserRole.SUPER_ADMIN && (
           <button
-            onClick={() => onNavigate("admin-portal")}
+            onClick={() => onNavigate("admin-dashboard")}
             className="px-5 py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-mono font-bold transition cursor-pointer"
           >
             OPEN CURRICULUM CONTROL
@@ -1168,7 +1168,7 @@ export default function CourseSystem({
               Stuck on scanning evasion filters? Paste your query or code snippet, and our cyber AI model will assist your training.
             </p>
             <button
-              onClick={() => onNavigate("student-dashboard")}
+              onClick={() => onNavigate(currentUser ? "student-portal" : "admin-login")}
               className="w-full py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-xs font-mono text-white transition font-bold cursor-pointer"
             >
               LAUNCH AI THREAT INTELLIGENCE

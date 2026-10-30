@@ -1,2875 +1,2748 @@
 import React, { useState, useEffect } from "react";
-import { 
-  ShieldAlert, Users, MessageSquare, Terminal, Settings, Database, 
-  CheckCircle2, XCircle, Send, Play, RefreshCw, Activity, LayoutGrid, 
-  LockIcon, Key, Globe, Radio, AlertCircle, HardDrive, Download, 
-  ChevronLeft, ChevronRight, Sliders, Image as ImageIcon, HelpCircle, AlertTriangle, 
-  CloudLightning, Upload, Plus, Trash2, Edit3, Shield, BookOpen
+import {
+  Activity,
+  Users,
+  BookOpen,
+  MessageSquare,
+  Mail,
+  ShieldAlert,
+  Cpu,
+  HardDrive,
+  RefreshCw,
+  Check,
+  Trash2,
+  Key,
+  Database,
+  UserCheck,
+  PlusCircle,
+  Send,
+  Cloud,
+  Layout,
+  Briefcase,
+  Image as ImageIcon,
+  HelpCircle,
+  Globe,
+  ExternalLink,
+  Award,
+  FileText,
+  Lock,
+  Calendar,
+  SendHorizontal,
 } from "lucide-react";
-import { 
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
-  CartesianGrid, Tooltip, Legend
-} from "recharts";
-import { UserRole, UserProfile, ContactMessage, LiveChatSession, VisitorLog, SmtpConfig, ApiKeyConfig, FileVaultItem, Report, Course, Lesson, CourseVideo } from "../types";
+import { motion } from "motion/react";
+import {
+  UserProfile,
+  UserRole,
+  Course,
+  ContactMessage,
+  ResendConfig,
+  MailLog,
+  VisitorLog,
+  SystemHealthMetrics,
+  CloudinaryConfig,
+  Report,
+  SupportTicket,
+  LiveChatSession,
+  CyberEvent,
+  FileVaultItem,
+} from "../types";
 
 interface AdminPortalProps {
-  currentUser: { id: string; username: string; role: UserRole } | null;
-  onLogout: () => void;
-  onNavigate: (tab: string) => void;
-  visitorLogs: VisitorLog[];
+  currentUser: { id: string; username: string; email: string; role: UserRole };
+  onRefreshCourses?: () => void;
 }
 
-export default function AdminPortal({ currentUser, onLogout, onNavigate, visitorLogs }: AdminPortalProps) {
-  // Navigation tabs (collapsible sidebar)
-  const [activeSubTab, setActiveSubTab] = useState<
-    "dashboard" | "users" | "inbox" | "analytics" | "smtp" | "security" | "cms" | "reports" | "academy"
+const ADMIN_ROLES: UserRole[] = [
+  UserRole.SUPER_ADMIN,
+  UserRole.SECONDARY_ADMIN,
+  UserRole.COURSE_MANAGER,
+  UserRole.SUPPORT_AGENT,
+  UserRole.MODERATOR,
+  UserRole.CONTENT_MANAGER,
+];
+
+export default function AdminPortal({
+  currentUser,
+  onRefreshCourses,
+}: AdminPortalProps) {
+  const [activeTab, setActiveTab] = useState<
+    | "dashboard"
+    | "cms"
+    | "users"
+    | "courses"
+    | "reports"
+    | "inbox"
+    | "resend"
+    | "cloudinary"
+    | "security"
   >("dashboard");
-  
-  // Sidebar state
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Active sub-section inside the CMS tab
-  const [cmsSection, setCmsSection] = useState<
-    "slides" | "services" | "team" | "gallery" | "faqs" | "stats" | "alliances" | "cloudinary"
-  >("slides");
-
-  // Real database states fetched from backend
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  // Telemetry & Analytics
+  const [health, setHealth] = useState<SystemHealthMetrics | null>(null);
+  const [visitors, setVisitors] = useState<VisitorLog[]>([]);
+  const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [chats, setChats] = useState<LiveChatSession[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [smtpList, setSmtpList] = useState<SmtpConfig[]>([]);
-  const [apiKeys, setApiKeys] = useState<ApiKeyConfig[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [chatSessions, setChatSessions] = useState<LiveChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [adminChatInput, setAdminChatInput] = useState("");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [reportsList, setReportsList] = useState<Report[]>([]);
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [systemHealth, setSystemHealth] = useState<any>(null);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [eventsList, setEventsList] = useState<CyberEvent[]>([]);
+  const [vaultItems, setVaultItems] = useState<FileVaultItem[]>([]);
 
-  // Academy Management State
-  const [selectedCourseForLessons, setSelectedCourseForLessons] = useState<Course | null>(null);
-  const [courseForm, setCourseForm] = useState({ title: "", description: "", category: "Penetration Testing", level: "Intermediate", thumbnail: "" });
-  const [lessonForm, setLessonForm] = useState({ title: "", description: "", videoTitle: "", videoUrl: "", videoDuration: "", thumbnail: "", pdfUrl: "", pdfName: "" });
-  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
-  const [academySuccess, setAcademySuccess] = useState<string | null>(null);
-  const [academyError, setAcademyError] = useState<string | null>(null);
+  // Inbox Sub-Tab
+  const [inboxSubTab, setInboxSubTab] = useState<"messages" | "tickets" | "chats">(
+    "messages"
+  );
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [ticketReplyText, setTicketReplyText] = useState<Record<string, string>>(
+    {}
+  );
 
-  // Drag & Drop Media Upload State
-  const [dragActive, setDragActive] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadingFile, setUploadingFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "paused" | "completed" | "cancelled">("idle");
-  const [uploadIntervalRef, setUploadIntervalRef] = useState<any>(null);
-
-  // Draft FIR details form
-  const [firForm, setFirForm] = useState({
-    policeStation: "SLA Cyber Crime Dispatch, Singapore",
-    officerDetails: "Cmdr. Tasnim Islam (Badge #13)",
-    signature: "Tasnim Islam"
+  // Resend Mail Config & Logs
+  const [resendConfig, setResendConfig] = useState<ResendConfig>({
+    fromEmail: "no-reply@thamjj13.top",
+    fromName: "THAMJJ13 Security",
+    adminAlertEmail: "thamjj13@gmail.com",
+    apiKeyConfigured: false,
+    source: "UNCONFIGURED",
   });
-  const [firSubmitting, setFirSubmitting] = useState(false);
-  const [firSuccess, setFirSuccess] = useState<string | null>(null);
+  const [resendApiKeyInput, setResendApiKeyInput] = useState("");
+  const [mailLogs, setMailLogs] = useState<MailLog[]>([]);
+  const [testEmailTarget, setTestEmailTarget] = useState(currentUser.email || "");
+  const [resendFeedback, setResendFeedback] = useState<{
+    ok: boolean;
+    msg: string;
+  } | null>(null);
+  const [testingResend, setTestingResend] = useState(false);
 
-  // SMTP settings testing state
-  const [smtpForm, setSmtpForm] = useState({ host: "mail.thamjj13.com", port: 465, user: "outbox@thamjj13.com" });
-  const [smtpTestResult, setSmtpTestResult] = useState<string | null>(null);
-
-  // Active inbox selected reply thread
-  const [activeMessage, setActiveMessage] = useState<ContactMessage | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [replySuccess, setReplySuccess] = useState<string | null>(null);
-
-  // API key creation state
-  const [newKeyName, setNewKeyName] = useState("");
-  const [newKeyCreated, setNewKeyCreated] = useState<string | null>(null);
-
-  // Backup state
-  const [backupTriggering, setBackupTriggering] = useState(false);
-
-  // ==========================================
-  // CMS DYNAMIC DATABASES STATES
-  // ==========================================
-  const [cmsSlides, setCmsSlides] = useState<any[]>([]);
-  const [cmsServices, setCmsServices] = useState<any[]>([]);
-  const [cmsTeam, setCmsTeam] = useState<any[]>([]);
-  const [cmsGallery, setCmsGallery] = useState<any[]>([]);
-  const [cmsFaqs, setCmsFaqs] = useState<any[]>([]);
-  const [cmsStats, setCmsStats] = useState<any[]>([]);
-  const [cmsAlliances, setCmsAlliances] = useState<any[]>([]);
-  const [cloudinarySettings, setCloudinarySettings] = useState({
+  // Cloudinary Config
+  const [cloudinaryConfig, setCloudinaryConfig] = useState<CloudinaryConfig>({
     cloudName: "",
     apiKey: "",
     apiSecret: "",
-    uploadPreset: ""
+    uploadPreset: "",
+    configured: false,
+  });
+  const [cloudinarySavedMsg, setCloudinarySavedMsg] = useState("");
+  const [uploadingState, setUploadingState] = useState<Record<string, boolean>>({});
+
+  // Create Sub-Admin Form
+  const [newAdminName, setNewAdminName] = useState("");
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [newAdminRole, setNewAdminRole] = useState<UserRole>(
+    UserRole.SECONDARY_ADMIN
+  );
+  const [adminCreateMsg, setAdminCreateMsg] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+
+  // Course & Lesson Creation
+  const [courseTitle, setCourseTitle] = useState("");
+  const [courseDesc, setCourseDesc] = useState("");
+  const [courseCat, setCourseCat] = useState("Penetration Testing");
+  const [courseLevel, setCourseLevel] = useState<
+    "Beginner" | "Intermediate" | "Advanced"
+  >("Intermediate");
+  const [courseThumb, setCourseThumb] = useState("");
+  const [selectedCourseForLesson, setSelectedCourseForLesson] = useState("");
+  const [lessonTitle, setLessonTitle] = useState("");
+  const [lessonDesc, setLessonDesc] = useState("");
+  const [lessonDuration, setLessonDuration] = useState("18:00");
+  const [lessonVideoUrl, setLessonVideoUrl] = useState("");
+  const [lessonPdfUrl, setLessonPdfUrl] = useState("");
+
+  // CMS Dynamic Collections
+  const [cmsSubTab, setCmsSubTab] = useState<
+    "slides" | "services" | "team" | "gallery" | "faqs" | "stats" | "alliances"
+  >("slides");
+  const [heroSlides, setHeroSlides] = useState<any[]>([]);
+  const [servicesList, setServicesList] = useState<any[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [galleryItems, setGalleryItems] = useState<any[]>([]);
+  const [faqsList, setFaqsList] = useState<any[]>([]);
+  const [statsList, setStatsList] = useState<any[]>([]);
+  const [alliancesList, setAlliancesList] = useState<any[]>([]);
+
+  const [newSlide, setNewSlide] = useState({
+    title: "",
+    subtitle: "",
+    ctaText: "Explore Academy",
+    bgImage: "",
+  });
+  const [newService, setNewService] = useState({
+    title: "",
+    description: "",
+    icon: "Shield",
+  });
+  const [newMember, setNewMember] = useState({
+    name: "",
+    role: "",
+    location: "Singapore HQ",
+    avatar: "",
+    bio: "",
+  });
+  const [newGallery, setNewGallery] = useState({
+    title: "",
+    category: "Operations",
+    url: "",
+  });
+  const [newFaq, setNewFaq] = useState({ q: "", a: "" });
+  const [newStat, setNewStat] = useState({ label: "", value: "", desc: "" });
+  const [newAlliance, setNewAlliance] = useState({ name: "" });
+
+  // Report Status & FIR Modals
+  const [reportNotesDraft, setReportNotesDraft] = useState<Record<string, string>>(
+    {}
+  );
+  const [reportStatusDraft, setReportStatusDraft] = useState<
+    Record<string, Report["status"]>
+  >({});
+  const [activeFirModal, setActiveFirModal] = useState<Report | null>(null);
+  const [firForm, setFirForm] = useState({
+    policeStation: "Marina Bay Cyber Command HQ",
+    district: "Singapore Zone 1",
+    officerDetails: currentUser.username || "Duty Investigator",
+    summary: "",
+    verificationCode: `THAM-FIR-${Math.floor(100000 + Math.random() * 900000)}`,
+    signature: `SIGNED-${(currentUser.username || "ADMIN").toUpperCase()}-SHA256`,
   });
 
-  // CMS forms state
-  const [slideForm, setSlideForm] = useState({ title: "", subtitle: "", bgImage: "", ctaText: "", ctaLink: "" });
-  const [serviceForm, setServiceForm] = useState({ title: "", description: "", icon: "Shield" });
-  const [teamForm, setTeamForm] = useState({ name: "", role: "", location: "", avatar: "", badgesStr: "" });
-  const [galleryForm, setGalleryForm] = useState({ title: "", category: "Operations", url: "" });
-  const [faqForm, setFaqForm] = useState({ q: "", a: "" });
-  const [statForm, setStatForm] = useState({ label: "", value: "", desc: "" });
-  const [allianceForm, setAllianceForm] = useState({ name: "" });
-
-  const [cmsActionResult, setCmsActionResult] = useState<string | null>(null);
+  // Security & Events Forms
+  const [newKeyName, setNewKeyName] = useState("");
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [nextPwd, setNextPwd] = useState("");
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    date: "",
+    time: "20:00 GMT+8",
+    instructor: currentUser.username,
+    description: "",
+    registrationLink: "",
+  });
 
   useEffect(() => {
-    fetchAdminData();
-    const interval = setInterval(fetchAdminData, 8000);
+    fetchAllData();
+    const interval = setInterval(() => {
+      fetchHealthAndVisitors();
+    }, 10000);
     return () => clearInterval(interval);
-  }, [activeSubTab]);
+  }, []);
 
-  const fetchAdminData = async () => {
+  const fetchHealthAndVisitors = async () => {
     try {
-      const [uRes, mRes, cRes, sRes, akRes, alRes, hRes, slidesRes, servicesRes, teamRes, galleryRes, faqsRes, statsRes, alliancesRes, cloudRes, rRes, coursesRes] = await Promise.all([
-        fetch("/api/admin/users"),
-        fetch("/api/admin/messages"),
-        fetch("/api/admin/chats"),
-        fetch("/api/visitor-stats"),
-        fetch("/api/admin/api-keys"),
-        fetch("/api/admin/audit-logs"),
-        fetch("/api/system-health"),
-        // CMS lists
-        fetch("/api/cms/hero-slides"),
-        fetch("/api/cms/services"),
-        fetch("/api/cms/team-members"),
-        fetch("/api/cms/gallery"),
-        fetch("/api/cms/faqs"),
-        fetch("/api/cms/stats"),
-        fetch("/api/cms/alliances"),
-        fetch("/api/cms/cloudinary-settings"),
-        fetch("/api/reports"),
-        fetch("/api/courses")
+      const [hRes, vRes] = await Promise.all([
+        fetch("/api/system-health").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/visitor-stats").then((r) => (r.ok ? r.json() : null)),
+      ]);
+      if (hRes) setHealth(hRes);
+      if (vRes?.logs) setVisitors(vRes.logs);
+    } catch (err) {
+      console.error("Telemetry poll error:", err);
+    }
+  };
+
+  const fetchAllData = async () => {
+    fetchHealthAndVisitors();
+    fetchCmsCollections();
+    try {
+      const [
+        uRes,
+        mRes,
+        tRes,
+        chRes,
+        cRes,
+        repRes,
+        rsRes,
+        mlRes,
+        clRes,
+        vltRes,
+        kRes,
+        aRes,
+        evRes,
+      ] = await Promise.all([
+        fetch("/api/admin/users").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/messages").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/support/tickets").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/chats").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/courses").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/reports").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/resend").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/admin/mail-logs").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/cloudinary").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/vault").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/apikeys").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/admin/audit-logs").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/events").then((r) => (r.ok ? r.json() : [])),
       ]);
 
-      setUsers(await uRes.json());
-      setMessages(await mRes.json());
-      setChats(await cRes.json());
-      setStats(await sRes.json());
-      setApiKeys(await akRes.json());
-      setAuditLogs(await alRes.json());
-      setSystemHealth(await hRes.json());
-
-      setCmsSlides(await slidesRes.json());
-      setCmsServices(await servicesRes.json());
-      setCmsTeam(await teamRes.json());
-      setCmsGallery(await galleryRes.json());
-      setCmsFaqs(await faqsRes.json());
-      setCmsStats(await statsRes.json());
-      setCmsAlliances(await alliancesRes.json());
-      setCloudinarySettings(await cloudRes.json());
-      setCourses(await coursesRes.json());
-      
-      const reportsData = await rRes.json();
-      setReports(reportsData);
+      setUsersList(Array.isArray(uRes) ? uRes : []);
+      setMessages(Array.isArray(mRes) ? mRes : []);
+      setTickets(Array.isArray(tRes) ? tRes : []);
+      setChatSessions(Array.isArray(chRes) ? chRes : []);
+      setCourses(Array.isArray(cRes) ? cRes : []);
+      if (Array.isArray(cRes) && cRes.length > 0 && !selectedCourseForLesson) {
+        setSelectedCourseForLesson(cRes[0].id);
+      }
+      setReportsList(Array.isArray(repRes) ? repRes : []);
+      if (rsRes) setResendConfig(rsRes);
+      setMailLogs(Array.isArray(mlRes) ? mlRes : []);
+      if (clRes) setCloudinaryConfig(clRes);
+      setVaultItems(Array.isArray(vltRes) ? vltRes : []);
+      setApiKeys(Array.isArray(kRes) ? kRes : []);
+      setAuditLogs(Array.isArray(aRes) ? aRes : []);
+      setEventsList(Array.isArray(evRes) ? evRes : []);
     } catch (err) {
-      console.error("Failed to load admin panel data:", err);
+      console.error("Admin fetchAllData error:", err);
     }
   };
 
-  // User approvals
-  const handleApproveUser = async (id: string, approved: boolean, role?: UserRole) => {
+  const fetchCmsCollections = async () => {
     try {
-      const res = await fetch(`/api/admin/users/${id}/approve`, {
+      const [sRes, svRes, tRes, gRes, fRes, stRes, alRes] = await Promise.all([
+        fetch("/api/cms/hero-slides").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/services").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/team-members").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/gallery").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/faqs").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/stats").then((r) => r.json()).catch(() => []),
+        fetch("/api/cms/alliances").then((r) => r.json()).catch(() => []),
+      ]);
+      setHeroSlides(sRes || []);
+      setServicesList(svRes || []);
+      setTeamMembers(tRes || []);
+      setGalleryItems(gRes || []);
+      setFaqsList(fRes || []);
+      setStatsList(stRes || []);
+      setAlliancesList(alRes || []);
+    } catch (err) {
+      console.error("CMS load error:", err);
+    }
+  };
+
+  // Server-backed Cloudinary Upload Helper
+  const uploadViaCloudinary = async (
+    file: File,
+    fieldKey: string,
+    folder: string,
+    onSuccess: (url: string) => void
+  ) => {
+    setUploadingState((prev) => ({ ...prev, [fieldKey]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", folder);
+
+      const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved, role }),
+        body: formData,
       });
-      if (res.ok) {
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleUpdateReportStatus = async (reportId: string, status: string, notes?: string) => {
-    try {
-      const res = await fetch(`/api/reports/${reportId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, notes }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setSelectedReport(updated);
-        fetchAdminData();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleGenerateFIR = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReport) return;
-    setFirSubmitting(true);
-    setFirSuccess(null);
-
-    // Cryptographically verifiable FIR verification code and FIR Number
-    const generatedVerificationCode = "FIR-VKEY-" + Math.random().toString(36).substring(2, 10).toUpperCase() + "-" + Date.now().toString().slice(-4);
-    const firNumber = "FIR-" + Date.now().toString().slice(-6) + "-" + Math.floor(Math.random() * 899 + 100);
-
-    const firDetails = {
-      firNumber,
-      policeStation: firForm.policeStation,
-      officerDetails: firForm.officerDetails,
-      signature: firForm.signature,
-      verificationCode: generatedVerificationCode,
-      finalizedAt: new Date().toISOString()
-    };
-
-    try {
-      const res = await fetch(`/api/reports/${selectedReport.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "APPROVED",
-          firDetails
-        })
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setSelectedReport(updated);
-        setFirSuccess("🟢 Success: Cryptographic First Information Report (FIR) generated, signed, and complainant notified.");
-        fetchAdminData();
+      const data = await res.json();
+      if (res.ok && data.url) {
+        onSuccess(data.url);
       } else {
-        setFirSuccess("❌ Failed to register FIR.");
+        alert(`Upload error: ${data.error || "Failed to upload asset"}`);
       }
     } catch (err) {
-      setFirSuccess("❌ Pipeline connection error.");
+      console.error("Upload failed:", err);
+      alert("Network error while uploading to Cloudinary.");
     } finally {
-      setFirSubmitting(false);
+      setUploadingState((prev) => ({ ...prev, [fieldKey]: false }));
     }
   };
 
-  // Create sub-admins
-  const [newAdminForm, setNewAdminForm] = useState({ username: "", email: "", role: UserRole.SECONDARY_ADMIN });
-  const [newAdminResult, setNewAdminResult] = useState<string | null>(null);
-  
-  const handleCreateAdmin = async (e: React.FormEvent) => {
+  // CMS Add / Delete
+  const handleAddCmsItem = async (collection: string, payload: any, resetCb: () => void) => {
+    const res = await fetch(`/api/cms/${collection}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      resetCb();
+      fetchCmsCollections();
+    }
+  };
+
+  const handleDeleteCmsItem = async (collection: string, id: string) => {
+    const res = await fetch(`/api/cms/${collection}/${id}`, { method: "DELETE" });
+    if (res.ok) fetchCmsCollections();
+  };
+
+  // User & Admin Management
+  const handleApproveUser = async (userId: string) => {
+    const res = await fetch(`/api/admin/users/${userId}/approve`, {
+      method: "POST",
+    });
+    if (res.ok) fetchAllData();
+  };
+
+  const handleChangeRole = async (userId: string, role: UserRole) => {
+    const res = await fetch(`/api/admin/users/${userId}/role`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (res.ok) fetchAllData();
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm("Permanently remove this account from Turso?")) return;
+    const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+    if (res.ok) fetchAllData();
+  };
+
+  const handleCreateSubAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setNewAdminResult(null);
-    try {
-      const res = await fetch("/api/admin/users/create-admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newAdminForm),
+    setAdminCreateMsg(null);
+    const res = await fetch("/api/admin/users/create-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: newAdminName,
+        email: newAdminEmail,
+        password: newAdminPassword,
+        role: newAdminRole,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setAdminCreateMsg({
+        ok: true,
+        text: `✓ Provisioned ${newAdminEmail} (${newAdminRole}). Welcome email dispatched from no-reply@thamjj13.top.`,
       });
-      const data = await res.json();
-      if (res.ok) {
-        setNewAdminResult(`🚀 Successfully provisioned administrative access for ${data.user.username}`);
-        setNewAdminForm({ username: "", email: "", role: UserRole.SECONDARY_ADMIN });
-        fetchAdminData();
-      } else {
-        setNewAdminResult(`❌ Failed: ${data.error}`);
-      }
-    } catch (err) {
-      setNewAdminResult(`❌ Failed: Network socket failure`);
+      setNewAdminName("");
+      setNewAdminEmail("");
+      setNewAdminPassword("");
+      fetchAllData();
+    } else {
+      setAdminCreateMsg({
+        ok: false,
+        text: data.error || "Failed to provision admin.",
+      });
     }
   };
 
-  // Contact Replies
-  const handleReplyMessage = async (e: React.FormEvent) => {
+  // Case Reports & FIR Actions
+  const handleSaveReportStatus = async (report: Report) => {
+    const status = reportStatusDraft[report.id] || report.status;
+    const notes =
+      reportNotesDraft[report.id] !== undefined
+        ? reportNotesDraft[report.id]
+        : report.notes || "";
+
+    const res = await fetch(`/api/reports/${report.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, notes }),
+    });
+    if (res.ok) {
+      fetchAllData();
+      alert(
+        `✓ Report ${report.id} updated to ${status}. Status notification sent via no-reply@thamjj13.top to ${report.email}.`
+      );
+    }
+  };
+
+  const handleSignFIR = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeMessage || !replyText.trim()) return;
-
-    try {
-      const res = await fetch(`/api/admin/messages/${activeMessage.id}/reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          replyText,
-          senderName: currentUser ? currentUser.username : "THAMJJ13 SOC Outbox",
-        }),
-      });
-      if (res.ok) {
-        setReplySuccess(`🚀 Reply dispatched! System routed email response safely via SMTP.`);
-        setReplyText("");
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
+    if (!activeFirModal) return;
+    const res = await fetch(`/api/reports/${activeFirModal.id}/fir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firDetails: firForm }),
+    });
+    if (res.ok) {
+      setActiveFirModal(null);
+      fetchAllData();
     }
   };
 
-  // SMTP Testing
-  const handleTestSmtp = async () => {
-    setSmtpTestResult(null);
-    try {
-      const res = await fetch("/api/admin/smtp/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(smtpForm),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSmtpTestResult(`🟢 SUCCESS: ${data.message}`);
-      }
-    } catch (err) {
-      setSmtpTestResult(`🔴 FAIL: Connection refused or TLS timeout.`);
-    }
+  const handleDeleteReport = async (id: string) => {
+    if (!window.confirm("Delete this case report permanently?")) return;
+    const res = await fetch(`/api/reports/${id}`, { method: "DELETE" });
+    if (res.ok) fetchAllData();
   };
 
-  // Api keys
-  const handleCreateApiKey = async (e: React.FormEvent) => {
+  // Courses & Lessons
+  const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newKeyName.trim()) return;
-    try {
-      const res = await fetch("/api/admin/api-keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, role: "Audit Logger Node" }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNewKeyCreated(data.apiKey.key);
-        setNewKeyName("");
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleRevokeApiKey = async (id: string) => {
-    try {
-      const res = await fetch(`/api/admin/api-keys/${id}/revoke`, { method: "POST" });
-      if (res.ok) fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Cloud backup
-  const handleTriggerBackup = async () => {
-    setBackupTriggering(true);
-    try {
-      await fetch("/api/admin/backup/trigger", { method: "POST" });
-      fetchAdminData();
-      alert("SHA-256 cloud administrative backup complete.");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setBackupTriggering(false);
-    }
-  };
-
-  // ==========================================
-  // CMS CRUD SUBMISSIONS
-  // ==========================================
-  const handleSaveCloudinarySettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/cloudinary-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cloudinarySettings)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Cloudinary settings synchronized and verified!");
-        fetchAdminData();
-      }
-    } catch (err) {
-      setCmsActionResult("Failed to update cloud CDN credentials.");
-    }
-  };
-
-  const handleAddHeroSlide = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/hero-slides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(slideForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Slide registered to offensive operations panel.");
-        setSlideForm({ title: "", subtitle: "", bgImage: "", ctaText: "", ctaLink: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteHeroSlide = async (id: string) => {
-    try {
-      await fetch(`/api/cms/hero-slides/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddService = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/services", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(serviceForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Service provision registered into Singapore/Dhaka grid.");
-        setServiceForm({ title: "", description: "", icon: "Shield" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteService = async (id: string) => {
-    try {
-      await fetch(`/api/cms/services/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddTeamMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    const badges = teamForm.badgesStr.split(",").map(b => b.trim()).filter(b => b);
-    try {
-      const res = await fetch("/api/cms/team-members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...teamForm,
-          badges
-        })
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Command team officer verified and indexed.");
-        setTeamForm({ name: "", role: "", location: "Singapore", avatar: "", badgesStr: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteTeamMember = async (id: string) => {
-    try {
-      await fetch(`/api/cms/team-members/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddGallery = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/gallery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(galleryForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Operational image loaded to media vault.");
-        setGalleryForm({ title: "", category: "Operations", url: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteGallery = async (id: string) => {
-    try {
-      await fetch(`/api/cms/gallery/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddFaq = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/faqs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(faqForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Frequently asked query loaded to database.");
-        setFaqForm({ q: "", a: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteFaq = async (id: string) => {
-    try {
-      await fetch(`/api/cms/faqs/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddStat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/stats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(statForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Counter statistic saved dynamically.");
-        setStatForm({ label: "", value: "", desc: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteStat = async (id: string) => {
-    try {
-      await fetch(`/api/cms/stats/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddAlliance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCmsActionResult(null);
-    try {
-      const res = await fetch("/api/cms/alliances", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(allianceForm)
-      });
-      if (res.ok) {
-        setCmsActionResult("✓ Security alliance registered.");
-        setAllianceForm({ name: "" });
-        fetchAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteAlliance = async (id: string) => {
-    try {
-      await fetch(`/api/cms/alliances/${id}`, { method: "DELETE" });
-      fetchAdminData();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Mock upload logic (simulates unsigned Cloudinary upload if config is present, or defaults to neat local base64)
-  const handleLocalImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: "slide" | "team" | "gallery") => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      
-      // If cloudinary preset & cloudName are saved, try real Cloudinary API endpoint!
-      if (cloudinarySettings.cloudName && cloudinarySettings.uploadPreset) {
-        try {
-          const formData = new FormData();
-          formData.append("file", base64String);
-          formData.append("upload_preset", cloudinarySettings.uploadPreset);
-
-          const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinarySettings.cloudName}/image/upload`, {
-            method: "POST",
-            body: formData
-          });
-          const cloudData = await res.json();
-          if (cloudData.secure_url) {
-            updateImageState(targetField, cloudData.secure_url);
-            return;
-          }
-        } catch (err) {
-          console.warn("Direct Cloudinary upload failed, falling back to local simulation:", err);
-        }
-      }
-
-      // Local fallback simulation URL
-      const fallbackUrl = base64String;
-      updateImageState(targetField, fallbackUrl);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const updateImageState = (target: "slide" | "team" | "gallery", url: string) => {
-    if (target === "slide") setSlideForm(prev => ({ ...prev, bgImage: url }));
-    else if (target === "team") setTeamForm(prev => ({ ...prev, avatar: url }));
-    else if (target === "gallery") setGalleryForm(prev => ({ ...prev, url: url }));
-    setCmsActionResult("✓ Image uploaded successfully to active secure storage!");
-  };
-
-  // ==========================================
-  // ACADEMY MANAGEMENT HANDLERS
-  // ==========================================
-  const handleCreateOrUpdateCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAcademySuccess(null);
-    setAcademyError(null);
-    try {
-      const url = editingCourseId ? `/api/courses/${editingCourseId}` : "/api/courses";
-      const method = editingCourseId ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(courseForm)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAcademySuccess(editingCourseId ? "✓ Course updated successfully!" : "✓ Course created successfully!");
-        setCourseForm({ title: "", description: "", category: "Penetration Testing", level: "Intermediate", thumbnail: "" });
-        setEditingCourseId(null);
-        fetchAdminData();
-      } else {
-        setAcademyError(data.error || "Failed to process course.");
-      }
-    } catch (err) {
-      setAcademyError("Network issue creating course.");
+    const res = await fetch("/api/admin/courses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: courseTitle,
+        description: courseDesc,
+        category: courseCat,
+        level: courseLevel,
+        thumbnail: courseThumb,
+      }),
+    });
+    if (res.ok) {
+      setCourseTitle("");
+      setCourseDesc("");
+      setCourseThumb("");
+      await fetchAllData();
+      onRefreshCourses?.();
     }
   };
 
   const handleDeleteCourse = async (id: string) => {
-    if (!window.confirm("Are you sure you want to permanently delete this course?")) return;
-    try {
-      const res = await fetch(`/api/courses/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) {
-        setAcademySuccess("✓ Course permanently deleted from node.");
-        if (selectedCourseForLessons?.id === id) setSelectedCourseForLessons(null);
-        fetchAdminData();
-      }
-    } catch (err) {
-      setAcademyError("Failed to delete course.");
+    if (!window.confirm("Delete this course?")) return;
+    const res = await fetch(`/api/admin/courses/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      await fetchAllData();
+      onRefreshCourses?.();
     }
   };
 
-  const handleCreateLesson = async (e: React.FormEvent) => {
+  const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCourseForLessons) return;
-    setAcademySuccess(null);
-    setAcademyError(null);
+    if (!selectedCourseForLesson) return;
+    const res = await fetch(`/api/admin/courses/${selectedCourseForLesson}/lessons`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: lessonTitle,
+        description: lessonDesc,
+        duration: lessonDuration,
+        videoUrl: lessonVideoUrl,
+        pdfUrl: lessonPdfUrl,
+      }),
+    });
+    if (res.ok) {
+      setLessonTitle("");
+      setLessonDesc("");
+      setLessonVideoUrl("");
+      setLessonPdfUrl("");
+      await fetchAllData();
+      onRefreshCourses?.();
+    }
+  };
+
+  // Inbox Replies (Contact + Tickets + Live Chat)
+  const handleReplyContact = async (msgId: string) => {
+    const text = replyText[msgId];
+    if (!text?.trim()) return;
+    const res = await fetch(`/api/admin/messages/${msgId}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ replyText: text }),
+    });
+    if (res.ok) {
+      setReplyText((prev) => ({ ...prev, [msgId]: "" }));
+      fetchAllData();
+    }
+  };
+
+  const handleReplyTicket = async (ticketId: string) => {
+    const text = ticketReplyText[ticketId];
+    if (!text?.trim()) return;
+    const res = await fetch(`/api/admin/tickets/${ticketId}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    if (res.ok) {
+      setTicketReplyText((prev) => ({ ...prev, [ticketId]: "" }));
+      fetchAllData();
+    }
+  };
+
+  const handleResolveTicket = async (ticketId: string) => {
+    const res = await fetch(`/api/admin/tickets/${ticketId}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "RESOLVED" }),
+    });
+    if (res.ok) fetchAllData();
+  };
+
+  const handleSendAdminChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeChatId || !adminChatInput.trim()) return;
+    const res = await fetch("/api/chats/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: activeChatId,
+        senderId: currentUser.id,
+        senderName: `${currentUser.username} (SOC)`,
+        senderRole: currentUser.role,
+        content: adminChatInput,
+      }),
+    });
+    if (res.ok) {
+      setAdminChatInput("");
+      fetchAllData();
+    }
+  };
+
+  // Resend Mail Gateway
+  const handleSaveResend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResendFeedback(null);
+    const res = await fetch("/api/admin/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: resendApiKeyInput || undefined,
+        fromEmail: resendConfig.fromEmail,
+        fromName: resendConfig.fromName,
+        adminAlertEmail: resendConfig.adminAlertEmail,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setResendConfig(data.config);
+      setResendApiKeyInput("");
+      setResendFeedback({
+        ok: true,
+        msg: "✓ Resend transactional mail configuration saved in Turso.",
+      });
+    } else {
+      setResendFeedback({
+        ok: false,
+        msg: data.error || "Failed to save Resend configuration.",
+      });
+    }
+  };
+
+  const handleTestResend = async () => {
+    if (!testEmailTarget.trim()) return;
+    setTestingResend(true);
+    setResendFeedback(null);
     try {
-      const res = await fetch(`/api/courses/${selectedCourseForLessons.id}/lessons`, {
+      const res = await fetch("/api/admin/resend/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lessonForm)
+        body: JSON.stringify({ toEmail: testEmailTarget }),
       });
       const data = await res.json();
-      if (data.success) {
-        setAcademySuccess("✓ Lesson module registered successfully!");
-        setLessonForm({ title: "", description: "", videoTitle: "", videoUrl: "", videoDuration: "", thumbnail: "", pdfUrl: "", pdfName: "" });
-        setUploadingFile(null);
-        setUploadProgress(0);
-        setUploadStatus("idle");
-        // Refresh selected course
-        const freshRes = await fetch("/api/courses");
-        const freshCourses = await freshRes.json();
-        setCourses(freshCourses);
-        const updatedCourse = freshCourses.find((c: any) => c.id === selectedCourseForLessons.id);
-        if (updatedCourse) setSelectedCourseForLessons(updatedCourse);
-      } else {
-        setAcademyError(data.error || "Failed to add lesson.");
-      }
-    } catch (err) {
-      setAcademyError("Failed to communicate with lesson engine.");
-    }
-  };
-
-  const handleDeleteLesson = async (lessonId: string) => {
-    if (!selectedCourseForLessons) return;
-    if (!window.confirm("Delete this lesson from syllabus?")) return;
-    try {
-      const res = await fetch(`/api/courses/${selectedCourseForLessons.id}/lessons/${lessonId}`, {
-        method: "DELETE"
+      setResendFeedback({
+        ok: res.ok && data.success,
+        msg: data.message || data.error || "Diagnostic completed.",
       });
-      const data = await res.json();
-      if (data.success) {
-        setAcademySuccess("✓ Lesson deleted.");
-        const freshRes = await fetch("/api/courses");
-        const freshCourses = await freshRes.json();
-        setCourses(freshCourses);
-        const updatedCourse = freshCourses.find((c: any) => c.id === selectedCourseForLessons.id);
-        if (updatedCourse) setSelectedCourseForLessons(updatedCourse);
-      }
-    } catch (err) {
-      setAcademyError("Failed to delete lesson.");
+      fetchAllData();
+    } catch {
+      setResendFeedback({ ok: false, msg: "Connection failed." });
+    } finally {
+      setTestingResend(false);
     }
   };
 
-  // ==========================================
-  // DRAG & DROP MEDIA UPLOAD CONTROL (REAL-TIME ENGINE)
-  // ==========================================
-  const handleDrag = (e: React.DragEvent) => {
+  // Cloudinary Save
+  const handleSaveCloudinary = async (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
+    const res = await fetch("/api/admin/cloudinary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cloudinaryConfig),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setCloudinaryConfig(data.config);
+      setCloudinarySavedMsg("✓ Cloudinary credentials saved in Turso.");
+      setTimeout(() => setCloudinarySavedMsg(""), 4000);
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  // Security, Backups, API Keys & Events
+  const handleTriggerBackup = async () => {
+    const res = await fetch("/api/admin/backups/trigger", { method: "POST" });
+    if (res.ok) fetchHealthAndVisitors();
+  };
+
+  const handleGenerateApiKey = async (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setupFileForUpload(e.dataTransfer.files[0]);
+    if (!newKeyName.trim()) return;
+    const res = await fetch("/api/admin/apikeys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newKeyName }),
+    });
+    if (res.ok) {
+      setNewKeyName("");
+      fetchAllData();
     }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setupFileForUpload(e.target.files[0]);
-    }
+  const handleRevokeKey = async (id: string) => {
+    await fetch(`/api/admin/apikeys/${id}`, { method: "DELETE" });
+    fetchAllData();
   };
 
-  const setupFileForUpload = (file: File) => {
-    setUploadingFile(file);
-    setUploadProgress(0);
-    setUploadStatus("idle");
-    if (uploadIntervalRef) clearInterval(uploadIntervalRef);
-  };
-
-  const startUpload = () => {
-    if (!uploadingFile) return;
-    setUploadStatus("uploading");
-    
-    // Create interval that simulates secure network chunk uploads
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          finalizeFileUpload();
-          return 100;
-        }
-        return prev + Math.floor(Math.random() * 8) + 3;
+  const handleRotatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdMsg(null);
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: currentPwd,
+        newPassword: nextPwd,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setPwdMsg({
+        ok: true,
+        text: "✓ Admin password updated & alert dispatched from no-reply@thamjj13.top.",
       });
-    }, 250);
-    
-    setUploadIntervalRef(interval);
-  };
-
-  const pauseUpload = () => {
-    if (uploadStatus !== "uploading") return;
-    if (uploadIntervalRef) clearInterval(uploadIntervalRef);
-    setUploadStatus("paused");
-  };
-
-  const resumeUpload = () => {
-    if (uploadStatus !== "paused") return;
-    startUpload();
-  };
-
-  const cancelUpload = () => {
-    if (uploadIntervalRef) clearInterval(uploadIntervalRef);
-    setUploadingFile(null);
-    setUploadProgress(0);
-    setUploadStatus("cancelled");
-  };
-
-  const finalizeFileUpload = async () => {
-    setUploadStatus("completed");
-    if (!uploadingFile) return;
-    
-    const isVideo = uploadingFile.type.startsWith("video/");
-    const isPdf = uploadingFile.type === "application/pdf" || uploadingFile.name.endsWith(".pdf");
-
-    // Real dynamic storage integration with Cloudinary if settings are provided
-    let finalUrl = "";
-    if (cloudinarySettings.cloudName && cloudinarySettings.uploadPreset) {
-      try {
-        const formData = new FormData();
-        formData.append("file", uploadingFile);
-        formData.append("upload_preset", cloudinarySettings.uploadPreset);
-        
-        const uploadType = isVideo ? "video" : "auto";
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinarySettings.cloudName}/${uploadType}/upload`, {
-          method: "POST",
-          body: formData
-        });
-        const cloudData = await res.json();
-        if (cloudData.secure_url) {
-          finalUrl = cloudData.secure_url;
-        }
-      } catch (err) {
-        console.warn("Direct Cloudinary stream upload failed, falling back to local simulated CDN:", err);
-      }
-    }
-
-    if (!finalUrl) {
-      finalUrl = isVideo 
-        ? "https://assets.mixkit.co/videos/preview/mixkit-cyber-security-expert-analyzing-data-on-screens-43094-large.mp4" 
-        : isPdf 
-        ? "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
-        : "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1200";
-    }
-
-    if (isVideo) {
-      setLessonForm(prev => ({
-        ...prev,
-        videoTitle: uploadingFile.name,
-        videoUrl: finalUrl,
-        videoDuration: "08:15",
-        thumbnail: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600"
-      }));
+      setCurrentPwd("");
+      setNextPwd("");
     } else {
-      setLessonForm(prev => ({
-        ...prev,
-        pdfUrl: finalUrl,
-        pdfName: uploadingFile.name
-      }));
+      setPwdMsg({ ok: false, text: data.error || "Password update failed." });
     }
   };
 
-  const threatChartData = [
-    { name: "00:00", blocking: 45, severity: 12 },
-    { name: "04:00", blocking: 62, severity: 18 },
-    { name: "08:00", blocking: 120, severity: 55 },
-    { name: "12:00", blocking: 85, severity: 32 },
-    { name: "16:00", blocking: 140, severity: 68 },
-    { name: "20:00", blocking: 195, severity: 89 },
-  ];
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/admin/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newEvent),
+    });
+    if (res.ok) {
+      setNewEvent({
+        title: "",
+        date: "",
+        time: "20:00 GMT+8",
+        instructor: currentUser.username,
+        description: "",
+        registrationLink: "",
+      });
+      fetchAllData();
+    }
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    await fetch(`/api/admin/events/${id}`, { method: "DELETE" });
+    fetchAllData();
+  };
+
+  const selectedChat = chatSessions.find((s) => s.id === activeChatId) || null;
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col md:flex-row font-sans" id="admin_portal_layout">
-      
-      {/* LEFT SIDEBAR (COLLAPSIBLE & PROFESSIONAL) */}
-      <aside 
-        className={`bg-white border-r border-neutral-200/80 flex flex-col justify-between transition-all duration-300 relative z-30 ${
-          isSidebarCollapsed ? "w-16" : "w-64"
-        }`}
-      >
-        {/* Toggle Collapse Button */}
-        <button 
-          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className="absolute -right-3 top-6 bg-white border border-neutral-200 p-1 rounded-full text-neutral-500 hover:text-neutral-900 transition shadow-sm cursor-pointer"
-        >
-          {isSidebarCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-        </button>
-
-        <div className="space-y-6 pt-6">
-          {/* Logo Brand Header */}
-          <div className="px-4 flex items-center gap-2.5">
-            <div className="p-2 bg-neutral-900 rounded-xl text-white flex-shrink-0">
-              <Shield className="w-5 h-5" />
-            </div>
-            {!isSidebarCollapsed && (
-              <div>
-                <h1 className="font-display font-bold text-xs tracking-wider text-neutral-950 uppercase">THAMJJ13</h1>
-                <p className="text-[9px] text-neutral-400 font-mono tracking-widest font-bold">SINGAPORE SOC</p>
-              </div>
-            )}
+    <div
+      className="max-w-7xl mx-auto px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8"
+      id="admin_console_root"
+    >
+      {/* SIDEBAR */}
+      <aside className="lg:col-span-3 space-y-6">
+        <div className="bg-neutral-950 text-white rounded-3xl p-6 space-y-3 shadow-luxury">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono tracking-widest text-emerald-400 uppercase font-bold">
+              ● ROOT CONSOLE
+            </span>
+            <span className="text-[9px] font-mono bg-white/10 px-2 py-0.5 rounded">
+              {currentUser.role}
+            </span>
           </div>
+          <h2 className="font-display font-bold text-lg">{currentUser.username}</h2>
+          <p className="text-[11px] font-mono text-neutral-400 truncate">
+            {currentUser.email}
+          </p>
+        </div>
 
-          {/* Nav Items */}
-          <nav className="space-y-1 px-2.5">
-            {[
-              { id: "dashboard", label: "Operations Panel", icon: <LayoutGrid className="w-4 h-4" /> },
-              { id: "reports", label: "Case Reports & FIRs", icon: <Shield className="w-4 h-4" /> },
-              { id: "cms", label: "CMS Data Builder", icon: <Sliders className="w-4 h-4" /> },
-              { id: "academy", label: "Academy Vault", icon: <BookOpen className="w-4 h-4" /> },
-              { id: "users", label: "Cadet Registrars", icon: <Users className="w-4 h-4" /> },
-              { id: "inbox", label: "Direct Inboxes", icon: <MessageSquare className="w-4 h-4" /> },
-              { id: "analytics", label: "Visitor Tracking", icon: <Globe className="w-4 h-4" /> },
-              { id: "smtp", label: "SMTP Manager", icon: <Settings className="w-4 h-4" /> },
-              { id: "security", label: "Keys & Audits", icon: <Key className="w-4 h-4" /> },
-            ].map(item => (
+        <nav className="bg-white rounded-3xl p-3 border border-neutral-200 space-y-1 shadow-sm text-xs">
+          {[
+            { id: "dashboard", label: "Operations Telemetry", icon: Activity },
+            { id: "reports", label: "Case Reports & FIRs", icon: FileText },
+            { id: "users", label: "Cadets & Admin Nodes", icon: Users },
+            { id: "inbox", label: "Direct Inboxes & SOC Chat", icon: MessageSquare },
+            { id: "cms", label: "CMS Data Builder", icon: Layout },
+            { id: "courses", label: "Academy Curriculum", icon: BookOpen },
+            { id: "resend", label: "Resend Mail Gateway", icon: Mail },
+            { id: "cloudinary", label: "Cloudinary & File Vault", icon: Cloud },
+            { id: "security", label: "Security, Events & Logs", icon: ShieldAlert },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
               <button
-                key={item.id}
-                onClick={() => setActiveSubTab(item.id as any)}
-                className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold tracking-wide transition flex items-center gap-3 cursor-pointer ${
-                  activeSubTab === item.id
-                    ? "bg-neutral-900 text-white shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition cursor-pointer ${
+                  activeTab === tab.id
+                    ? "bg-neutral-900 text-white font-bold shadow-sm"
+                    : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
                 }`}
-                title={item.label}
               >
-                <span className="flex-shrink-0">{item.icon}</span>
-                {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
               </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="p-3 border-t border-neutral-100 bg-neutral-50/50">
-          {!isSidebarCollapsed ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-neutral-200 text-neutral-800 flex items-center justify-center font-bold font-mono text-xs border border-neutral-300">
-                  {currentUser?.username.substring(0,2).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-neutral-900 truncate">{currentUser?.username}</p>
-                  <p className="text-[8px] font-mono text-neutral-400 capitalize">{currentUser?.role}</p>
-                </div>
-              </div>
-              <button 
-                onClick={onLogout}
-                className="w-full text-left px-2 py-1.5 rounded-lg text-[10px] font-mono font-bold text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 transition"
-              >
-                → TERMINAL EXIT
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={onLogout}
-              className="w-full p-1 text-center text-neutral-400 hover:text-neutral-900 font-bold"
-              title="Logout"
-            >
-              ⎋
-            </button>
-          )}
-        </div>
+            );
+          })}
+        </nav>
       </aside>
 
-      {/* MAIN ADMIN CONTENT WORKSPACE */}
-      <main className="flex-1 p-6 md:p-8 space-y-8 overflow-y-auto max-h-screen">
-        
-        {/* TOP LEVEL PREMIUM HEADER BAR */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-neutral-100 text-neutral-900 border border-neutral-200">
-              <Radio className="w-5.5 h-5.5 animate-pulse text-neutral-900" />
-            </div>
-            <div>
-              <span className="text-[9px] text-neutral-400 font-mono tracking-widest font-bold uppercase">ZERO TRUST GATEWAY PROTOCOL</span>
-              <h2 className="font-display font-bold text-lg md:text-xl text-neutral-900">
-                Administrative Terminal Control
-              </h2>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={handleTriggerBackup}
-              disabled={backupTriggering}
-              className="px-4 py-2.5 bg-white border border-neutral-200 hover:bg-neutral-50 text-xs font-mono rounded-xl text-neutral-700 transition flex items-center gap-2 cursor-pointer"
-            >
-              <Database className="w-3.5 h-3.5 text-neutral-900" /> SHA-256 Snapshot Backup
-            </button>
-            <button
-              onClick={() => onNavigate("landing")}
-              className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-xs font-mono rounded-xl text-white font-bold transition flex items-center gap-2 cursor-pointer"
-            >
-              <Globe className="w-3.5 h-3.5" /> Landing Node
-            </button>
-          </div>
-        </div>
-
-        {/* 1. OPERATIONS PANEL SUB TAB */}
-        {activeSubTab === "dashboard" && (
-          <div className="space-y-8 animate-fadeIn" id="dashboard_panel">
-            {/* Quick Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { label: "Verified Cadet Accounts", value: users.length, desc: "SLA database entries", color: "text-neutral-950" },
-                { label: "Awaiting SLA Approvals", value: users.filter(u => !u.approved).length, desc: "Security gateway queue", color: "text-amber-600" },
-                { label: "Incident Messages Routed", value: messages.length, desc: "Decrypted contact forms", color: "text-neutral-950" },
-                { label: "Active Live Chat Channels", value: chats.length, desc: "Active tunnel handshakes", color: "text-neutral-950" },
-              ].map((item, i) => (
-                <div key={i} className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm space-y-1">
-                  <span className="text-[9px] text-neutral-400 font-mono tracking-widest uppercase font-bold">{item.label}</span>
-                  <h3 className={`text-2xl font-display font-bold ${item.color}`}>{item.value}</h3>
-                  <p className="text-[10px] text-neutral-500 font-light">{item.desc}</p>
+      {/* MAIN WORKSPACE */}
+      <section className="lg:col-span-9 space-y-6">
+        {/* 1. TELEMETRY & VISITOR ANALYTICS */}
+        {activeTab === "dashboard" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm">
+                <div className="flex justify-between items-center text-[10px] font-mono text-neutral-400">
+                  <span>TURSO DATABASE</span>
+                  <Database className="w-4 h-4 text-indigo-600" />
                 </div>
-              ))}
-            </div>
-
-            {/* Health parameters */}
-            {systemHealth && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-xs text-neutral-900 uppercase tracking-widest flex items-center gap-2 border-b border-neutral-100 pb-3">
-                    <Activity className="w-4 h-4 text-neutral-800" /> Platform CPU & RAM Node
-                  </h3>
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs font-mono text-neutral-700">
-                        <span>Express VM CPU Load</span>
-                        <span className="font-bold">{systemHealth.cpuUsage}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-neutral-900" style={{ width: `${systemHealth.cpuUsage}%` }} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs font-mono text-neutral-700">
-                        <span>Shared Memory Utilization</span>
-                        <span className="font-bold">{systemHealth.memoryUsage}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-neutral-900" style={{ width: `${systemHealth.memoryUsage}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-xs text-neutral-900 uppercase tracking-widest flex items-center gap-2 border-b border-neutral-100 pb-3">
-                    <HardDrive className="w-4 h-4 text-neutral-800" /> Storage Capacity Limits
-                  </h3>
-                  <div className="space-y-3 font-mono text-xs text-neutral-600">
-                    <div className="flex justify-between items-center">
-                      <span>Cloudinary CDN Assets</span>
-                      <span className="font-bold text-neutral-900">{systemHealth.cloudinaryStatus}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>File Vault Crypt Node</span>
-                      <span className="font-bold text-neutral-900">OK (AES-256)</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Super Admin Email Route</span>
-                      <span className="font-bold text-neutral-900 truncate max-w-[120px]">thamjj13@gmail.com</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-xs text-neutral-900 uppercase tracking-widest flex items-center gap-2 border-b border-neutral-100 pb-3">
-                    <ShieldAlert className="w-4 h-4 text-neutral-800" /> SMTP Outbox parameters
-                  </h3>
-                  <div className="space-y-3 font-mono text-xs text-neutral-600">
-                    <div className="flex justify-between items-center">
-                      <span>SMTP Priority Node 1</span>
-                      <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-200 rounded text-[9px] font-bold text-neutral-800">ONLINE</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Backup Relay Node 2</span>
-                      <span className="px-2 py-0.5 bg-neutral-100 border border-neutral-200 rounded text-[9px] font-bold text-neutral-800">ONLINE</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Test Mail routing</span>
-                      <button onClick={() => setActiveSubTab("smtp")} className="text-neutral-900 font-bold hover:underline">Launch Tool</button>
-                    </div>
-                  </div>
-                </div>
+                <h4 className="font-display font-bold text-lg text-neutral-900 mt-2">
+                  {health?.databaseEngine || "Turso (LibSQL)"}
+                </h4>
+                <p className="text-[11px] font-mono text-emerald-700 mt-1">
+                  Mode: {health?.databaseStatus || "ACTIVE"}
+                </p>
               </div>
-            )}
 
-            {/* Threat Chart Deflection Area */}
-            <div className="bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-sm text-neutral-900">Intrusion Prevention Systems deflection rates</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={threatChartData}>
-                    <defs>
-                      <linearGradient id="neutralGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#171717" stopOpacity={0.15}/>
-                        <stop offset="95%" stopColor="#171717" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" stroke="#888888" style={{ fontSize: 10, fontFamily: "monospace" }} />
-                    <YAxis stroke="#888888" style={{ fontSize: 10, fontFamily: "monospace" }} />
-                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e5e7eb" }} />
-                    <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Area type="monotone" dataKey="blocking" name="Threat Campaigns Deflected" stroke="#171717" fillOpacity={1} fill="url(#neutralGlow)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm">
+                <div className="flex justify-between items-center text-[10px] font-mono text-neutral-400">
+                  <span>RESEND GATEWAY</span>
+                  <Mail className="w-4 h-4 text-emerald-600" />
+                </div>
+                <h4 className="font-display font-bold text-lg text-neutral-900 mt-2">
+                  {health?.resendStatus || "READY"}
+                </h4>
+                <p className="text-[10px] font-mono text-neutral-500 mt-1 truncate">
+                  {health?.senderEmail || "no-reply@thamjj13.top"}
+                </p>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* 2. CMS CONTENT BUILDER SUB TAB (MAGNIFICENT NEW ADDITION!) */}
-        {activeSubTab === "cms" && (
-          <div className="space-y-8 animate-fadeIn" id="cms_data_builder">
-            
-            {/* CMS Section horizontal navigation pill bar */}
-            <div className="flex flex-wrap gap-1.5 bg-white p-2 border border-neutral-200/80 rounded-2xl text-xs font-mono">
-              {[
-                { id: "slides", label: "Hero Slides", icon: <Sliders className="w-4 h-4" /> },
-                { id: "services", label: "Services", icon: <Shield className="w-4 h-4" /> },
-                { id: "team", label: "Command Team", icon: <Users className="w-4 h-4" /> },
-                { id: "gallery", label: "Gallery Assets", icon: <ImageIcon className="w-4 h-4" /> },
-                { id: "faqs", label: "FAQs Inquiries", icon: <HelpCircle className="w-4 h-4" /> },
-                { id: "stats", label: "Stats Counters", icon: <Activity className="w-4 h-4" /> },
-                { id: "alliances", label: "Alliances", icon: <Globe className="w-4 h-4" /> },
-                { id: "cloudinary", label: "Cloudinary CDN", icon: <CloudLightning className="w-4 h-4" /> },
-              ].map(sec => (
-                <button
-                  key={sec.id}
-                  onClick={() => { setCmsSection(sec.id as any); setCmsActionResult(null); }}
-                  className={`px-3.5 py-2 rounded-xl font-bold tracking-wider transition flex items-center gap-1.5 cursor-pointer ${
-                    cmsSection === sec.id
-                      ? "bg-neutral-900 text-white shadow-sm"
-                      : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
-                  }`}
-                >
-                  {sec.icon} {sec.label}
-                </button>
-              ))}
-            </div>
-
-            {cmsActionResult && (
-              <div className="p-4 bg-white border border-neutral-200 rounded-xl text-xs font-mono font-bold text-neutral-800">
-                {cmsActionResult}
+              <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm">
+                <div className="flex justify-between items-center text-[10px] font-mono text-neutral-400">
+                  <span>CLOUDINARY CDN</span>
+                  <Cloud className="w-4 h-4 text-sky-600" />
+                </div>
+                <h4 className="font-display font-bold text-lg text-neutral-900 mt-2">
+                  {health?.cloudinaryStatus || "READY"}
+                </h4>
+                <p className="text-[11px] font-mono text-neutral-500 mt-1">
+                  Media &amp; Evidence Store
+                </p>
               </div>
-            )}
 
-            {/* A. SLIDES BUILDER */}
-            {cmsSection === "slides" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* Add slide */}
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Register Hero slide Node</h3>
-                  <form onSubmit={handleAddHeroSlide} className="space-y-3.5 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">SLIDE TITLE</label>
-                      <input
-                        type="text"
-                        required
-                        value={slideForm.title}
-                        onChange={e => setSlideForm({ ...slideForm, title: e.target.value })}
-                        placeholder="Singapore offensive security..."
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">SUBTITLE DESCRIPTION</label>
-                      <textarea
-                        rows={2}
-                        value={slideForm.subtitle}
-                        onChange={e => setSlideForm({ ...slideForm, subtitle: e.target.value })}
-                        placeholder="Detail operational scopes here..."
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-neutral-400 font-mono">BACKGROUND THUMBNAIL / FILE UPLOAD</label>
-                      <input
-                        type="text"
-                        value={slideForm.bgImage}
-                        onChange={e => setSlideForm({ ...slideForm, bgImage: e.target.value })}
-                        placeholder="Paste unsplash url or choose local file"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Upload className="w-4 h-4 text-neutral-400" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={e => handleLocalImageUpload(e, "slide")}
-                          className="text-[10px] font-mono text-neutral-500"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">CTA LINK</label>
-                        <input
-                          type="text"
-                          value={slideForm.ctaLink}
-                          onChange={e => setSlideForm({ ...slideForm, ctaLink: e.target.value })}
-                          placeholder="#contact"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">CTA TEXT</label>
-                        <input
-                          type="text"
-                          value={slideForm.ctaText}
-                          onChange={e => setSlideForm({ ...slideForm, ctaText: e.target.value })}
-                          placeholder="Contact Dispatch"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                    </div>
-                    <button type="submit" className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs">
-                      PROVISION HERO SLIDE
-                    </button>
-                  </form>
+              <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm">
+                <div className="flex justify-between items-center text-[10px] font-mono text-neutral-400">
+                  <span>NODE RESOURCES</span>
+                  <Cpu className="w-4 h-4 text-neutral-800" />
                 </div>
-
-                {/* Slides queue */}
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Active Hero slides list</h3>
-                  <div className="space-y-3.5">
-                    {cmsSlides.map(slide => (
-                      <div key={slide.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-4">
-                        <div className="flex gap-3 items-center min-w-0">
-                          {slide.bgImage && (
-                            <img src={slide.bgImage} className="w-11 h-11 rounded-lg object-cover border border-neutral-200 flex-shrink-0" referrerPolicy="no-referrer" />
-                          )}
-                          <div className="min-w-0">
-                            <h4 className="text-xs font-bold text-neutral-900 truncate">{slide.title}</h4>
-                            <p className="text-[10px] text-neutral-500 truncate">{slide.subtitle}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => handleDeleteHeroSlide(slide.id)} className="p-2 text-neutral-400 hover:text-red-600 transition flex-shrink-0 cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsSlides.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">No slides added. Website is currently relying on default light template layout.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* B. SERVICES BUILDER */}
-            {cmsSection === "services" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Register Service Blueprint</h3>
-                  <form onSubmit={handleAddService} className="space-y-3.5 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">SERVICE TITLE</label>
-                      <input
-                        type="text"
-                        required
-                        value={serviceForm.title}
-                        onChange={e => setServiceForm({ ...serviceForm, title: e.target.value })}
-                        placeholder="Continuous Threat Monitoring"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">DESCRIPTION</label>
-                      <textarea
-                        required
-                        rows={3}
-                        value={serviceForm.description}
-                        onChange={e => setServiceForm({ ...serviceForm, description: e.target.value })}
-                        placeholder="Enter parameters of defensive surveillance SLA..."
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">ICON COMPONENT CLASS</label>
-                      <select
-                        value={serviceForm.icon}
-                        onChange={e => setServiceForm({ ...serviceForm, icon: e.target.value })}
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      >
-                        <option value="Shield">Shield Lock</option>
-                        <option value="Terminal">Terminal Console</option>
-                        <option value="Database">Database Crypt</option>
-                        <option value="Globe">Global Node</option>
-                        <option value="Zap">Active Threat Deflection</option>
-                      </select>
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      PUBLISH SERVICE PROVISION
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Verified service provisions</h3>
-                  <div className="space-y-3">
-                    {cmsServices.map(serv => (
-                      <div key={serv.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-4">
-                        <div>
-                          <h4 className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
-                            <span className="p-1 bg-neutral-100 rounded text-neutral-800 font-mono text-[9px] uppercase">{serv.icon}</span>
-                            {serv.title}
-                          </h4>
-                          <p className="text-[10px] text-neutral-500 mt-1">{serv.description}</p>
-                        </div>
-                        <button onClick={() => handleDeleteService(serv.id)} className="p-2 text-neutral-400 hover:text-red-600 transition cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsServices.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">No services loaded yet. Database empty.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* C. TEAM MEMBERS BUILDER */}
-            {cmsSection === "team" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Verify Command Officer</h3>
-                  <form onSubmit={handleAddTeamMember} className="space-y-3 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">OFFICER NAME</label>
-                      <input
-                        type="text"
-                        required
-                        value={teamForm.name}
-                        onChange={e => setTeamForm({ ...teamForm, name: e.target.value })}
-                        placeholder="Hacker Specialist"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">ROLE / RANK</label>
-                        <input
-                          type="text"
-                          required
-                          value={teamForm.role}
-                          onChange={e => setTeamForm({ ...teamForm, role: e.target.value })}
-                          placeholder="Senior Offensive Auditor"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">HQ LOCATION</label>
-                        <input
-                          type="text"
-                          required
-                          value={teamForm.location}
-                          onChange={e => setTeamForm({ ...teamForm, location: e.target.value })}
-                          placeholder="Singapore HQ"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-neutral-400 font-mono">AVATAR IMAGE URL / UPLOAD</label>
-                      <input
-                        type="text"
-                        value={teamForm.avatar}
-                        onChange={e => setTeamForm({ ...teamForm, avatar: e.target.value })}
-                        placeholder="Paste image URL"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Upload className="w-4 h-4 text-neutral-400" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={e => handleLocalImageUpload(e, "team")}
-                          className="text-[10px] font-mono text-neutral-500"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">BADGES (COMMA SEPARATED)</label>
-                      <input
-                        type="text"
-                        value={teamForm.badgesStr}
-                        onChange={e => setTeamForm({ ...teamForm, badgesStr: e.target.value })}
-                        placeholder="CEH, CISSP, OSCP"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      INDEX TEAM MEMBER PROFILE
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Active Command center staff</h3>
-                  <div className="space-y-3.5">
-                    {cmsTeam.map(member => (
-                      <div key={member.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-4">
-                        <div className="flex gap-3 items-center min-w-0">
-                          <img src={member.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"} className="w-11 h-11 rounded-full object-cover border border-neutral-200 flex-shrink-0" referrerPolicy="no-referrer" />
-                          <div className="min-w-0">
-                            <h4 className="text-xs font-bold text-neutral-900">{member.name}</h4>
-                            <p className="text-[10px] text-neutral-500">{member.role} • {member.location}</p>
-                            <div className="flex gap-1.5 flex-wrap mt-1">
-                              {member.badges && member.badges.map((b: string, i: number) => (
-                                <span key={i} className="text-[8px] bg-white border border-neutral-200 px-1.5 py-0.5 rounded text-neutral-600 font-mono">
-                                  {b}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <button onClick={() => handleDeleteTeamMember(member.id)} className="p-2 text-neutral-400 hover:text-red-600 transition flex-shrink-0 cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsTeam.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">No command members loaded.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* D. GALLERY ASSETS */}
-            {cmsSection === "gallery" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Upload Media Asset</h3>
-                  <form onSubmit={handleAddGallery} className="space-y-3 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">ASSET TITLE</label>
-                      <input
-                        type="text"
-                        required
-                        value={galleryForm.title}
-                        onChange={e => setGalleryForm({ ...galleryForm, title: e.target.value })}
-                        placeholder="Seminar Dhaka"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">CATEGORY / ALBUM</label>
-                      <input
-                        type="text"
-                        required
-                        value={galleryForm.category}
-                        onChange={e => setGalleryForm({ ...galleryForm, category: e.target.value })}
-                        placeholder="e.g. Operations, Seminars"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-neutral-400 font-mono">MEDIA FILE URL / SELECT FILE</label>
-                      <input
-                        type="text"
-                        value={galleryForm.url}
-                        onChange={e => setGalleryForm({ ...galleryForm, url: e.target.value })}
-                        placeholder="Paste direct URL"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Upload className="w-4 h-4 text-neutral-400" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={e => handleLocalImageUpload(e, "gallery")}
-                          className="text-[10px] font-mono text-neutral-500"
-                        />
-                      </div>
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      VERIFY & UPLOAD MEDIA ASSET
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Verified dynamic media items</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {cmsGallery.map(item => (
-                      <div key={item.id} className="relative rounded-xl overflow-hidden border border-neutral-200 bg-neutral-50 group">
-                        <img src={item.url} alt={item.title} className="w-full h-24 object-cover" referrerPolicy="no-referrer" />
-                        <div className="p-2.5 bg-white flex justify-between items-center gap-2">
-                          <div className="min-w-0">
-                            <h4 className="text-[10px] font-bold text-neutral-900 truncate">{item.title}</h4>
-                            <p className="text-[8px] font-mono text-neutral-400">{item.category}</p>
-                          </div>
-                          <button onClick={() => handleDeleteGallery(item.id)} className="p-1 text-neutral-400 hover:text-red-600 transition flex-shrink-0 cursor-pointer">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    {cmsGallery.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic col-span-2">No visual assets logged in empty database.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* E. FAQs BUILDER */}
-            {cmsSection === "faqs" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Create FAQ node</h3>
-                  <form onSubmit={handleAddFaq} className="space-y-3.5 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">QUESTION</label>
-                      <input
-                        type="text"
-                        required
-                        value={faqForm.q}
-                        onChange={e => setFaqForm({ ...faqForm, q: e.target.value })}
-                        placeholder="What certifications are issued?"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">ANSWER</label>
-                      <textarea
-                        required
-                        rows={4}
-                        value={faqForm.a}
-                        onChange={e => setFaqForm({ ...faqForm, a: e.target.value })}
-                        placeholder="We offer CSA verified defensive security training courses..."
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      PUBLISH INQUIRY RESOURCE
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Active FAQs</h3>
-                  <div className="space-y-3.5">
-                    {cmsFaqs.map(faq => (
-                      <div key={faq.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="text-xs font-bold text-neutral-900">Q: {faq.q}</h4>
-                          <p className="text-[10px] text-neutral-500">A: {faq.a}</p>
-                        </div>
-                        <button onClick={() => handleDeleteFaq(faq.id)} className="p-1.5 text-neutral-400 hover:text-red-600 transition flex-shrink-0 cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsFaqs.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">No query nodes indexed.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* F. STATS BUILDER */}
-            {cmsSection === "stats" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Create Statistic Metric</h3>
-                  <form onSubmit={handleAddStat} className="space-y-3.5 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">LABEL TAG</label>
-                      <input
-                        type="text"
-                        required
-                        value={statForm.label}
-                        onChange={e => setStatForm({ ...statForm, label: e.target.value })}
-                        placeholder="THREAT_CAMPAIGNS"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">VALUE</label>
-                        <input
-                          type="text"
-                          required
-                          value={statForm.value}
-                          onChange={e => setStatForm({ ...statForm, value: e.target.value })}
-                          placeholder="99.9%"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-400 font-mono">DESCRIPTION</label>
-                        <input
-                          type="text"
-                          required
-                          value={statForm.desc}
-                          onChange={e => setStatForm({ ...statForm, desc: e.target.value })}
-                          placeholder="Audit success metrics"
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                        />
-                      </div>
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      PUBLISH STATISTICS NODE
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Saved numeric counters</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {cmsStats.map(st => (
-                      <div key={st.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex justify-between items-center gap-4">
-                        <div>
-                          <p className="text-[9px] font-mono text-neutral-400">{st.label}</p>
-                          <h4 className="text-xl font-display font-bold text-neutral-900">{st.value}</h4>
-                          <p className="text-[10px] text-neutral-500">{st.desc}</p>
-                        </div>
-                        <button onClick={() => handleDeleteStat(st.id)} className="p-1 text-neutral-400 hover:text-red-600 transition cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsStats.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic col-span-2">No counters active.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* G. ALLIANCES BUILDER */}
-            {cmsSection === "alliances" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Verify Security Alliance</h3>
-                  <form onSubmit={handleAddAlliance} className="space-y-3.5 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">ALLIED AGENCY NAME</label>
-                      <input
-                        type="text"
-                        required
-                        value={allianceForm.name}
-                        onChange={e => setAllianceForm({ ...allianceForm, name: e.target.value })}
-                        placeholder="Singapore Security Academy (SLA)"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      />
-                    </div>
-                    <button type="submit" className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                      INDEX COMPLIANCE ALLIANCE
-                    </button>
-                  </form>
-                </div>
-
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Strategic alliances list</h3>
-                  <div className="space-y-3">
-                    {cmsAlliances.map(alliance => (
-                      <div key={alliance.id} className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between gap-4">
-                        <span className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-neutral-800" /> {alliance.name}
-                        </span>
-                        <button onClick={() => handleDeleteAlliance(alliance.id)} className="p-1 text-neutral-400 hover:text-red-600 transition cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    {cmsAlliances.length === 0 && (
-                      <p className="text-xs text-neutral-400 italic">No allied alignments indexed in database.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* H. CLOUDINARY SETTINGS MANAGER */}
-            {cmsSection === "cloudinary" && (
-              <div className="max-w-2xl bg-white p-6 rounded-2xl border border-neutral-200/80 shadow-sm space-y-6">
-                <div>
-                  <h3 className="font-display font-bold text-base text-neutral-900 flex items-center gap-2">
-                    <CloudLightning className="w-5 h-5 text-neutral-900" /> Cloudinary CDN Settings
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
-                    Configure direct client-side image upload channels. Dynamic slide images, officer avatars, and laboratory logs will route directly into your private Cloudinary bucket.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSaveCloudinarySettings} className="space-y-4 text-xs">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">CLOUDINARY CLOUD NAME</label>
-                      <input
-                        type="text"
-                        value={cloudinarySettings.cloudName}
-                        onChange={e => setCloudinarySettings({ ...cloudinarySettings, cloudName: e.target.value })}
-                        placeholder="e.g. dxyz123"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-xs text-neutral-900"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">UNSIGNED UPLOAD PRESET</label>
-                      <input
-                        type="text"
-                        value={cloudinarySettings.uploadPreset}
-                        onChange={e => setCloudinarySettings({ ...cloudinarySettings, uploadPreset: e.target.value })}
-                        placeholder="e.g. preset_unsigned"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-xs text-neutral-900"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">API KEY (OPTIONAL)</label>
-                      <input
-                        type="text"
-                        value={cloudinarySettings.apiKey}
-                        onChange={e => setCloudinarySettings({ ...cloudinarySettings, apiKey: e.target.value })}
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-xs text-neutral-900"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-400 font-mono">API SECRET (OPTIONAL)</label>
-                      <input
-                        type="password"
-                        value={cloudinarySettings.apiSecret}
-                        onChange={e => setCloudinarySettings({ ...cloudinarySettings, apiSecret: e.target.value })}
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2.5 text-xs text-neutral-900"
-                      />
-                    </div>
-                  </div>
-
-                  <button type="submit" className="w-full py-3 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs">
-                    SAVE & INTEGRATE CLOUDINARY CDN CHANNEL
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 3. CADET REGISTRARS SUB TAB */}
-        {activeSubTab === "users" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn" id="users_registrars">
-            
-            {/* Left list: cadet accounts awaiting access approval */}
-            <div className="lg:col-span-8 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Student & Auditor Accounts Queue</h3>
-              <p className="text-xs text-neutral-500">Verify client or student identities before endorsing access to secure course vaults.</p>
-
-              <div className="space-y-4">
-                {users.map(u => (
-                  <div key={u.id} className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center flex-wrap gap-4">
-                    <div className="flex gap-3 items-center">
-                      <img src={u.profilePicture || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"} alt="avatar" className="w-10 h-10 rounded-full border border-neutral-200 object-cover" referrerPolicy="no-referrer" />
-                      <div>
-                        <h4 className="text-sm font-display font-bold text-neutral-900 flex items-center gap-1.5">
-                          {u.username} 
-                          {u.role === UserRole.SUPER_ADMIN && <span className="text-[8px] bg-red-100 border border-red-200 text-red-700 px-2 py-0.5 rounded font-bold font-mono">SUPER</span>}
-                        </h4>
-                        <p className="text-[10px] text-neutral-500 font-mono">{u.email} • {u.phone}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <select
-                        value={u.role}
-                        onChange={e => handleApproveUser(u.id, u.approved, e.target.value as UserRole)}
-                        className="bg-white border border-neutral-200 text-neutral-700 rounded-xl px-2.5 py-1.5 text-[10px] focus:outline-none"
-                      >
-                        {Object.values(UserRole).map(role => (
-                          <option key={role} value={role}>{role}</option>
-                        ))}
-                      </select>
-
-                      {u.approved ? (
-                        <button
-                          onClick={() => handleApproveUser(u.id, false)}
-                          className="px-3.5 py-1.5 bg-neutral-100 border border-neutral-200 text-neutral-800 text-[10px] font-mono rounded-xl hover:bg-neutral-200 transition flex items-center gap-1 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-neutral-950" /> Approved
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleApproveUser(u.id, true)}
-                          className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[10px] font-mono font-bold rounded-xl transition cursor-pointer"
-                        >
-                          Grant Access
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {users.length === 0 && (
-                  <p className="text-xs text-neutral-400 italic">No registered user logs in system databases.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Right panel: provision new administrative moderators */}
-            <div className="lg:col-span-4 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-sm text-neutral-900 uppercase">Create Administrative Node</h3>
-              <p className="text-neutral-500 text-[11px] leading-relaxed">Seed secondary moderators or support personnel to handle direct inboxes.</p>
-              
-              {newAdminResult && (
-                <div className="p-3 bg-neutral-50 border border-neutral-200 text-[11px] font-mono rounded-xl text-neutral-800">
-                  {newAdminResult}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateAdmin} className="space-y-3.5 text-xs">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-400 font-mono">USERNAME</label>
-                  <input
-                    type="text"
-                    required
-                    value={newAdminForm.username}
-                    onChange={e => setNewAdminForm({ ...newAdminForm, username: e.target.value })}
-                    placeholder="dhaka_command_moderator"
-                    className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-400 font-mono">EMAIL ADDRESS</label>
-                  <input
-                    type="email"
-                    required
-                    value={newAdminForm.email}
-                    onChange={e => setNewAdminForm({ ...newAdminForm, email: e.target.value })}
-                    placeholder="moderator@thamjj13.com"
-                    className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-400 font-mono">AUTHORIZATION LEVEL</label>
-                  <select
-                    value={newAdminForm.role}
-                    onChange={e => setNewAdminForm({ ...newAdminForm, role: e.target.value as any })}
-                    className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:outline-none"
-                  >
-                    <option value={UserRole.SECONDARY_ADMIN}>SECONDARY_ADMIN</option>
-                    <option value={UserRole.COURSE_MANAGER}>COURSE_MANAGER</option>
-                    <option value={UserRole.SUPPORT_AGENT}>SUPPORT_AGENT</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs cursor-pointer"
-                >
-                  PROVISION SECURE ACCESS
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* 4. DIRECT MESSAGES INBOX */}
-        {activeSubTab === "inbox" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn" id="incident_inbox">
-            
-            {/* Left list: Direct messages from contact forms */}
-            <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4 overflow-y-auto max-h-[600px]">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Direct Compliance Reports</h3>
-              <p className="text-xs text-neutral-500">Incident tickets and audits dispatched from landing contact portals.</p>
-
-              <div className="space-y-3">
-                {messages.map(m => (
+                <h4 className="font-display font-bold text-lg text-neutral-900 mt-2">
+                  CPU {health?.cpuUsage ?? 12}% • RAM {health?.memoryUsage ?? 34}%
+                </h4>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] font-mono text-neutral-500">
+                    Uptime: {health?.uptime || "0d 0h 1m"}
+                  </span>
                   <button
-                    key={m.id}
-                    onClick={() => { setActiveMessage(m); setReplySuccess(null); }}
-                    className={`w-full text-left p-4 rounded-xl border transition cursor-pointer ${
-                      activeMessage?.id === m.id
-                        ? "bg-neutral-50 border-neutral-900"
-                        : "bg-white border-neutral-200 hover:border-neutral-300"
-                    }`}
+                    onClick={handleTriggerBackup}
+                    className="text-[10px] font-mono font-bold text-indigo-600 hover:underline cursor-pointer"
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-[9px] bg-neutral-100 border border-neutral-200 px-2 py-0.5 rounded text-neutral-700 font-mono font-bold uppercase truncate max-w-[120px]">
-                        {m.subject}
-                      </span>
-                      <span className="text-[9px] text-neutral-400 font-mono">{new Date(m.timestamp).toLocaleDateString()}</span>
-                    </div>
-                    <h4 className="text-xs font-bold text-neutral-950 truncate">{m.name} ({m.email})</h4>
-                    <p className="text-[10px] text-neutral-500 line-clamp-2 mt-1">{m.message}</p>
+                    Snapshot ({health?.backupsCount ?? 0})
                   </button>
-                ))}
-                {messages.length === 0 && (
-                  <p className="text-xs text-neutral-400 italic">No dispatches logged.</p>
-                )}
+                </div>
               </div>
             </div>
 
-            {/* Right panel: dispatch details & outbox reply tool */}
-            <div className="lg:col-span-7">
-              {activeMessage ? (
-                <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-6">
-                  <div className="border-b border-neutral-100 pb-4 space-y-1">
-                    <span className="text-[9px] text-neutral-400 font-mono font-bold uppercase tracking-widest">{activeMessage.subject}</span>
-                    <h2 className="font-display font-bold text-lg text-neutral-950">{activeMessage.name}</h2>
-                    <p className="text-[11px] text-neutral-500 font-mono">From: {activeMessage.email} • {activeMessage.phone}</p>
-                  </div>
-
-                  <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl space-y-3 text-xs text-neutral-800">
-                    <h4 className="text-[10px] text-neutral-400 font-mono font-bold uppercase">TRANSMITTED DESPATCH LOG</h4>
-                    <p className="leading-relaxed whitespace-pre-line">{activeMessage.message}</p>
-                    
-                    {activeMessage.attachmentUrl && (
-                      <div className="p-3 bg-white border border-neutral-200 rounded-xl flex justify-between items-center mt-4 shadow-sm">
-                        <span className="text-[11px] text-neutral-600 truncate font-mono">Attachment: {activeMessage.attachmentName || "incident_log.txt"}</span>
-                        <a href={activeMessage.attachmentUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-neutral-800 hover:bg-neutral-100 rounded transition">
-                          <Download className="w-4 h-4" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Previous replies */}
-                  {activeMessage.replies.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-widest">OUTBOX SMTP ARCHIVES</h4>
-                      {activeMessage.replies.map(rep => (
-                        <div key={rep.id} className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-1 text-xs">
-                          <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
-                            <span className="font-bold">{rep.sender}</span>
-                            <span>{new Date(rep.timestamp).toLocaleTimeString()}</span>
-                          </div>
-                          <p className="text-neutral-700 mt-1">{rep.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Send reply */}
-                  <form onSubmit={handleReplyMessage} className="space-y-4 pt-4 border-t border-neutral-100">
-                    <h4 className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-widest">TRANSMIT SMTP RESPONSE REPLY</h4>
-                    {replySuccess && (
-                      <div className="p-3 bg-neutral-100 border border-neutral-200 rounded-xl text-[10px] font-mono text-neutral-800">
-                        {replySuccess}
-                      </div>
-                    )}
-                    <textarea
-                      required
-                      rows={4}
-                      value={replyText}
-                      onChange={e => setReplyText(e.target.value)}
-                      placeholder="Compose direct outbox response..."
-                      className="w-full bg-white border border-neutral-200 rounded-xl px-4 py-3 text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                    />
-                    <button
-                      type="submit"
-                      className="w-full py-3 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                    >
-                      <Send className="w-4 h-4" /> TRANSMIT SECURE EMAIL RESPONSE
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div className="bg-white rounded-2xl p-12 border border-neutral-200/80 shadow-sm text-center flex flex-col items-center justify-center space-y-4 min-h-[300px]">
-                  <MessageSquare className="w-10 h-10 text-neutral-300 animate-bounce" />
-                  <h3 className="text-sm font-display font-bold text-neutral-400">Select Direct Message Thread</h3>
-                  <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
-                    Select any compliance record or security inquiry on the left column to read client parameters or issue responses.
+            <div className="bg-white rounded-3xl p-6 border border-neutral-200 shadow-sm space-y-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-display font-bold text-base text-neutral-900">
+                    Real-Time Visitor Telemetry (Turso Ledger)
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Recent edge sessions across pages, devices, and origin networks.
                   </p>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 5. VISITOR ANALYTICS TRACKER */}
-        {activeSubTab === "analytics" && (
-          <div className="space-y-6 animate-fadeIn" id="visitor_analytics">
-            <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Operations Traffic & Connection Ledger</h3>
-              <p className="text-xs text-neutral-500">Real-time analysis of active sessions connecting to Singapore/Bangladesh endpoints.</p>
+                <button
+                  onClick={fetchAllData}
+                  className="p-2 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4 text-neutral-700" />
+                </button>
+              </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-200 text-neutral-400 font-mono uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4">Client IP</th>
-                      <th className="py-3 px-4">Country & City</th>
-                      <th className="py-3 px-4">Browser / OS</th>
-                      <th className="py-3 px-4">Resolution</th>
-                      <th className="py-3 px-4">Connect Time</th>
-                      <th className="py-3 px-4">ISP / Network</th>
-                      <th className="py-3 px-4">Current Tab Node</th>
-                      <th className="py-3 px-4">Duration</th>
+                    <tr className="border-b border-neutral-200 text-[10px] font-mono text-neutral-400 uppercase">
+                      <th className="py-2.5 pr-4">IP / Node</th>
+                      <th className="py-2.5 pr-4">Browser / OS</th>
+                      <th className="py-2.5 pr-4">Page</th>
+                      <th className="py-2.5 pr-4">Timezone</th>
+                      <th className="py-2.5">Timestamp</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-100 font-mono text-neutral-700">
-                    {visitorLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-neutral-50">
-                        <td className="py-3 px-4 text-neutral-950 font-bold">{log.ip}</td>
-                        <td className="py-3 px-4">{log.city}, {log.country}</td>
-                        <td className="py-3 px-4 text-neutral-500">{log.browser} ({log.os})</td>
-                        <td className="py-3 px-4 text-neutral-400">{log.resolution}</td>
-                        <td className="py-3 px-4 text-[10px] text-neutral-400">{new Date(log.visitTime).toLocaleTimeString()}</td>
-                        <td className="py-3 px-4 text-neutral-500">{log.isp}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] text-neutral-800 font-bold uppercase font-mono">
-                            {log.currentPage}
-                          </span>
+                  <tbody className="divide-y divide-neutral-100 font-mono text-[11px]">
+                    {visitors.slice(0, 15).map((v) => (
+                      <tr key={v.id}>
+                        <td className="py-2.5 pr-4 font-bold text-neutral-900">
+                          {v.ip}
                         </td>
-                        <td className="py-3 px-4 text-neutral-950 font-bold">{log.sessionDuration}s</td>
+                        <td className="py-2.5 pr-4 text-neutral-600">
+                          {v.browser} • {v.os} ({v.device})
+                        </td>
+                        <td className="py-2.5 pr-4 text-indigo-700">{v.currentPage}</td>
+                        <td className="py-2.5 pr-4 text-neutral-500">{v.timezone}</td>
+                        <td className="py-2.5 text-neutral-400">
+                          {new Date(v.visitTime).toLocaleTimeString()}
+                        </td>
                       </tr>
                     ))}
-                    {visitorLogs.length === 0 && (
+                    {visitors.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="py-8 text-center text-xs text-neutral-400 italic">No connection handshakes registered.</td>
+                        <td colSpan={5} className="py-8 text-center text-neutral-400">
+                          No visitor logs recorded yet.
+                        </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {/* 6. SMTP ROUTING CONFIG MANAGER */}
-        {activeSubTab === "smtp" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn" id="smtp_routing">
-            <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-lg text-neutral-900">SMTP Failover Testing Panel</h3>
-              <p className="text-xs text-neutral-500">Configure parameters for direct dispatch email forwarding.</p>
+        {/* 2. CASE REPORTS & FIR MANAGEMENT */}
+        {activeTab === "reports" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-6"
+          >
+            <div className="flex justify-between items-center border-b border-neutral-100 pb-4">
+              <div>
+                <h3 className="font-display font-bold text-lg text-neutral-900">
+                  Citizen Cyber Incident Reports &amp; Official FIR Triage
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Status updates and signed FIRs automatically notify complainants via{" "}
+                  <strong>no-reply@thamjj13.top</strong>.
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-neutral-100 rounded-full text-xs font-mono font-bold">
+                {reportsList.length} Total Cases
+              </span>
+            </div>
 
-              {smtpTestResult && (
-                <div className="p-3 rounded-xl border border-neutral-200 bg-neutral-50 font-mono text-xs text-neutral-800">
-                  {smtpTestResult}
-                </div>
-              )}
+            {reportsList.length === 0 ? (
+              <div className="text-center py-12 text-xs text-neutral-500">
+                No cyber incident reports have been submitted yet.
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {reportsList.map((rep) => (
+                  <div
+                    key={rep.id}
+                    className="p-6 rounded-2xl border border-neutral-200 bg-neutral-50/60 space-y-4 text-xs"
+                  >
+                    <div className="flex flex-wrap justify-between items-start gap-3">
+                      <div>
+                        <span className="font-mono font-bold text-sm text-neutral-900">
+                          {rep.id}
+                        </span>
+                        <span className="mx-2 text-neutral-300">•</span>
+                        <span className="font-bold text-indigo-700">{rep.category}</span>
+                        <p className="text-[11px] text-neutral-500 mt-1">
+                          Complainant: <strong>{rep.fullName}</strong> ({rep.email} •{" "}
+                          {rep.phone})
+                        </p>
+                        <p className="text-[11px] text-neutral-400">
+                          Location: {rep.incidentLocation} | Incident Time:{" "}
+                          {rep.incidentDateTime}
+                        </p>
+                      </div>
 
-              <div className="space-y-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-400 font-mono">SMTP HOST SERVER</label>
-                  <input
-                    type="text"
-                    value={smtpForm.host}
-                    onChange={e => setSmtpForm({ ...smtpForm, host: e.target.value })}
-                    className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 focus:outline-none"
-                  />
-                </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-3 py-1 rounded-full text-[10px] font-mono font-bold ${
+                            rep.status === "APPROVED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : rep.status === "REJECTED"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {rep.status}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteReport(rep.id)}
+                          className="p-2 text-neutral-400 hover:text-red-600 cursor-pointer"
+                          title="Delete Report"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-neutral-400 font-mono">SMTP TLS PORT</label>
-                    <input
-                      type="number"
-                      value={smtpForm.port}
-                      onChange={e => setSmtpForm({ ...smtpForm, port: parseInt(e.target.value) })}
-                      className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 focus:outline-none"
-                    />
+                    <p className="p-4 bg-white rounded-xl border border-neutral-200 text-neutral-700 leading-relaxed">
+                      {rep.description}
+                    </p>
+
+                    {rep.evidenceUrl && (
+                      <div>
+                        <a
+                          href={rep.evidenceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-indigo-700 hover:underline"
+                        >
+                          Inspect Attached Cloudinary Evidence{" "}
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Status + Investigator Notes Updater */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-neutral-200">
+                      <select
+                        value={reportStatusDraft[rep.id] || rep.status}
+                        onChange={(e) =>
+                          setReportStatusDraft((prev) => ({
+                            ...prev,
+                            [rep.id]: e.target.value as Report["status"],
+                          }))
+                        }
+                        className="md:col-span-3 bg-white border border-neutral-200 rounded-xl px-3 py-2 font-mono text-xs"
+                      >
+                        <option value="PENDING">PENDING</option>
+                        <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+                        <option value="APPROVED">APPROVED</option>
+                        <option value="REJECTED">REJECTED</option>
+                        <option value="CLOSED">CLOSED</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Investigator notes (emailed to complainant)..."
+                        value={
+                          reportNotesDraft[rep.id] !== undefined
+                            ? reportNotesDraft[rep.id]
+                            : rep.notes || ""
+                        }
+                        onChange={(e) =>
+                          setReportNotesDraft((prev) => ({
+                            ...prev,
+                            [rep.id]: e.target.value,
+                          }))
+                        }
+                        className="md:col-span-5 bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleSaveReportStatus(rep)}
+                        className="md:col-span-2 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl font-bold text-[11px] cursor-pointer"
+                      >
+                        Update &amp; Email
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveFirModal(rep);
+                          setFirForm({
+                            policeStation:
+                              rep.firDetails?.policeStation ||
+                              "Marina Bay Cyber Command HQ",
+                            district: rep.firDetails?.district || "Singapore Zone 1",
+                            officerDetails:
+                              rep.firDetails?.officerDetails || currentUser.username,
+                            summary: rep.firDetails?.summary || rep.notes || "",
+                            verificationCode:
+                              rep.firDetails?.verificationCode ||
+                              `THAM-FIR-${Math.floor(100000 + Math.random() * 900000)}`,
+                            signature:
+                              rep.firDetails?.signature ||
+                              `SIGNED-${currentUser.username.toUpperCase()}`,
+                          });
+                        }}
+                        className="md:col-span-2 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl font-bold text-[11px] cursor-pointer"
+                      >
+                        {rep.firNumber ? "Edit FIR" : "Sign Official FIR"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-neutral-400 font-mono">OUTBOX SENDER EMAIL</label>
+                ))}
+              </div>
+            )}
+
+            {/* FIR SIGNING MODAL */}
+            {activeFirModal && (
+              <div className="fixed inset-0 z-50 bg-neutral-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+                <form
+                  onSubmit={handleSignFIR}
+                  className="bg-white rounded-3xl max-w-lg w-full p-8 space-y-4 border border-neutral-200 shadow-2xl text-xs"
+                >
+                  <h4 className="font-display font-bold text-lg text-neutral-900">
+                    Sign &amp; Issue Official FIR ({activeFirModal.id})
+                  </h4>
+                  <p className="text-neutral-500">
+                    Signing approves the case and dispatches the official FIR notification from{" "}
+                    <strong>no-reply@thamjj13.top</strong> to{" "}
+                    <strong>{activeFirModal.email}</strong>.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <input
                       type="text"
-                      value={smtpForm.user}
-                      onChange={e => setSmtpForm({ ...smtpForm, user: e.target.value })}
-                      className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 focus:outline-none"
+                      required
+                      placeholder="Station / Command Node"
+                      value={firForm.policeStation}
+                      onChange={(e) =>
+                        setFirForm({ ...firForm, policeStation: e.target.value })
+                      }
+                      className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="District / Zone"
+                      value={firForm.district}
+                      onChange={(e) =>
+                        setFirForm({ ...firForm, district: e.target.value })
+                      }
+                      className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Investigating Officer"
+                      value={firForm.officerDetails}
+                      onChange={(e) =>
+                        setFirForm({ ...firForm, officerDetails: e.target.value })
+                      }
+                      className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Verification Code"
+                      value={firForm.verificationCode}
+                      onChange={(e) =>
+                        setFirForm({ ...firForm, verificationCode: e.target.value })
+                      }
+                      className="border border-neutral-200 rounded-xl px-3 py-2.5 font-mono"
                     />
                   </div>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Official Investigator Findings & Legal Summary..."
+                    value={firForm.summary}
+                    onChange={(e) =>
+                      setFirForm({ ...firForm, summary: e.target.value })
+                    }
+                    className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Cryptographic Digital Signature"
+                    value={firForm.signature}
+                    onChange={(e) =>
+                      setFirForm({ ...firForm, signature: e.target.value })
+                    }
+                    className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 font-mono"
+                  />
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFirModal(null)}
+                      className="px-4 py-2.5 rounded-xl border border-neutral-200 font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold cursor-pointer"
+                    >
+                      Seal FIR &amp; Notify Complainant
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* 3. CADETS & ADMIN NODES */}
+        {activeTab === "users" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            {currentUser.role === UserRole.SUPER_ADMIN && (
+              <form
+                onSubmit={handleCreateSubAdmin}
+                className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4 text-xs"
+              >
+                <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                  <PlusCircle className="w-5 h-5" /> Provision Administrative Officer
+                </h3>
+                <p className="text-neutral-500">
+                  Creates an approved officer in Turso with bcrypt credentials and emails their onboarding notice via{" "}
+                  <strong>no-reply@thamjj13.top</strong>.
+                </p>
+
+                {adminCreateMsg && (
+                  <div
+                    className={`p-3 rounded-xl font-mono border ${
+                      adminCreateMsg.ok
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                        : "bg-red-50 border-red-200 text-red-800"
+                    }`}
+                  >
+                    {adminCreateMsg.text}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Officer Callsign *"
+                    value={newAdminName}
+                    onChange={(e) => setNewAdminName(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                  />
+                  <input
+                    type="email"
+                    required
+                    placeholder="Official Email *"
+                    value={newAdminEmail}
+                    onChange={(e) => setNewAdminEmail(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                  />
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="Initial Password (min 8) *"
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                  />
+                  <select
+                    value={newAdminRole}
+                    onChange={(e) => setNewAdminRole(e.target.value as UserRole)}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2.5 font-mono"
+                  >
+                    {ADMIN_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <button
-                  onClick={handleTestSmtp}
-                  className="w-full py-3 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm"
+                  type="submit"
+                  className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl cursor-pointer"
                 >
-                  TEST OUTBOX SMTP CONCURRENCY HANDSHAKE
-                </button>
-              </div>
-            </div>
-
-            <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Active round-robin pools</h3>
-              <p className="text-[9px] text-neutral-400 font-mono uppercase tracking-widest font-bold">ROUTING ENDPOINTS</p>
-              
-              <div className="space-y-3 font-mono text-xs">
-                <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center">
-                  <div>
-                    <h4 className="text-neutral-900 font-bold">Priority Node 1: mail.thamjj13.com</h4>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Port: 465 SSL • outbox@thamjj13.com</p>
-                  </div>
-                  <span className="px-2.5 py-1 bg-neutral-100 border border-neutral-200 text-neutral-800 rounded text-[9px] font-bold">ACTIVE</span>
-                </div>
-
-                <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center">
-                  <div>
-                    <h4 className="text-neutral-900 font-bold">Backup Node 2: backup-mail.thamjj13.com</h4>
-                    <p className="text-neutral-400 text-[10px] mt-0.5">Port: 587 TLS • failover@thamjj13.com</p>
-                  </div>
-                  <span className="px-2.5 py-1 bg-neutral-100 border border-neutral-200 text-neutral-800 rounded text-[9px] font-bold">ACTIVE</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 7. SECURITY KEYS & IMMUTABLE AUDIT TRAIL LOGS */}
-        {activeSubTab === "security" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn" id="security_keys">
-            {/* API Keys */}
-            <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Programmatic Stream Keys</h3>
-              <p className="text-xs text-neutral-500">Provision secure keycodes for logging ingestion stream routes.</p>
-
-              <form onSubmit={handleCreateApiKey} className="flex gap-2 text-xs">
-                <input
-                  type="text"
-                  required
-                  placeholder="Router log tag (e.g., Dhaka Firewalls)"
-                  value={newKeyName}
-                  onChange={e => setNewKeyName(e.target.value)}
-                  className="flex-1 bg-white border border-neutral-200 rounded-xl px-3 py-2 text-neutral-900 focus:outline-none"
-                />
-                <button type="submit" className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl cursor-pointer">
-                  Generate
+                  Provision Officer &amp; Send Credentials
                 </button>
               </form>
+            )}
 
-              {newKeyCreated && (
-                <div className="p-3 bg-neutral-50 border border-neutral-200 text-neutral-950 font-mono text-[10px] rounded-xl break-all">
-                  <strong>SECURE TOKEN:</strong> {newKeyCreated}
-                </div>
-              )}
+            <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+              <h3 className="font-display font-bold text-lg text-neutral-900">
+                Registered Personnel &amp; Cadet Clearance Roster ({usersList.length})
+              </h3>
 
-              <div className="space-y-3 font-mono text-xs pt-4 border-t border-neutral-100">
-                {apiKeys.map(k => (
-                  <div key={k.id} className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center">
+              <div className="space-y-3">
+                {usersList.map((u) => (
+                  <div
+                    key={u.id}
+                    className="p-4 rounded-2xl border border-neutral-200 flex flex-wrap justify-between items-center gap-4 text-xs bg-neutral-50/40"
+                  >
                     <div>
-                      <h4 className="text-neutral-950 font-bold">{k.name}</h4>
-                      <p className="text-neutral-400 text-[9px] break-all mt-0.5">{k.key.substring(0, 24)}...</p>
-                    </div>
-                    {k.status === "ACTIVE" ? (
-                      <button
-                        onClick={() => handleRevokeApiKey(k.id)}
-                        className="px-3 py-1 bg-white border border-neutral-200 hover:bg-neutral-100 text-neutral-700 text-[10px] rounded-lg cursor-pointer"
-                      >
-                        Revoke
-                      </button>
-                    ) : (
-                      <span className="text-neutral-400 uppercase text-[9px] font-bold">REVOKED</span>
-                    )}
-                  </div>
-                ))}
-                {apiKeys.length === 0 && (
-                  <p className="text-xs text-neutral-400 italic">No stream keys registered.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Audit Logs */}
-            <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4 overflow-y-auto max-h-[500px]">
-              <h3 className="font-display font-bold text-lg text-neutral-900">Immutable Cryptographic Audit Trail</h3>
-              <p className="text-xs text-neutral-500">Automatic logging mapping administrative database state updates.</p>
-
-              <div className="space-y-2.5 font-mono text-[10px] text-neutral-500">
-                {auditLogs.map((log, i) => (
-                  <div key={log.id || i} className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex justify-between items-start gap-4">
-                    <div className="space-y-1">
-                      <p className="text-neutral-900 font-semibold">{log.action}</p>
-                      <p className="text-neutral-400 text-[9px]">Operator: {log.user} • IP: {log.ip}</p>
-                    </div>
-                    <span className="text-neutral-400 text-[8px] whitespace-nowrap">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                ))}
-                {auditLogs.length === 0 && (
-                  <p className="text-xs text-neutral-400 italic">No cryptographic audit trails recorded.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 8. INCIDENT CASE REPORTS & FIR MANAGEMENT WORKSPACE */}
-        {activeSubTab === "reports" && (
-          <div className="space-y-6 animate-fadeIn" id="admin_reports_workspace">
-            {/* Header banner */}
-            <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="font-display font-bold text-xl text-neutral-900 uppercase">INCIDENT CASE REPORTS & FIR DISPATCH MODULE</h2>
-                <p className="text-xs text-neutral-500">Triage incoming cyber complaints, assign jurisdictions, deploy legal clauses, and finalize secure printable FIR certificates.</p>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={fetchAdminData}
-                  className="p-2.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-neutral-800 rounded-xl transition cursor-pointer"
-                  title="Force Refresh Socket"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              {/* Report selection register */}
-              <div className="lg:col-span-4 bg-white rounded-2xl p-5 border border-neutral-200/80 shadow-sm space-y-4">
-                <div className="flex justify-between items-center border-b border-neutral-100 pb-3">
-                  <h3 className="text-xs font-mono font-bold text-neutral-900 uppercase tracking-widest">DISPATCH REGISTER ({reports.length})</h3>
-                </div>
-
-                {reports.length === 0 ? (
-                  <div className="text-center py-16 text-neutral-400 space-y-2">
-                    <Shield className="w-10 h-10 mx-auto stroke-1" />
-                    <p className="text-xs">No cyber incidents reported yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                    {reports.map(r => (
-                      <button
-                        key={r.id}
-                        onClick={() => {
-                          setSelectedReport(r);
-                          setFirSuccess(null);
-                        }}
-                        className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                          selectedReport?.id === r.id
-                            ? "bg-neutral-900 border-neutral-950 text-white shadow-sm"
-                            : "bg-neutral-50 border-neutral-200 hover:bg-neutral-100 text-neutral-800"
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-mono text-[10px] font-bold">{r.id}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-mono font-bold ${
-                            r.status === "APPROVED" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
-                            r.status === "REJECTED" ? "bg-red-100 text-red-800 border border-red-200" :
-                            r.status === "UNDER_REVIEW" ? "bg-blue-100 text-blue-800 border border-blue-200" :
-                            "bg-amber-100 text-amber-800 border border-amber-200"
-                          }`}>
-                            {r.status}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-xs truncate mb-1">{r.category}</h4>
-                        <p className="text-[10px] text-neutral-400 font-mono">Complainant: {r.fullName}</p>
-                        <p className="text-[9px] text-neutral-500 font-mono mt-1">Date: {new Date(r.createdAt).toLocaleDateString()}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Detail & compilers workspace */}
-              <div className="lg:col-span-8 space-y-6">
-                {selectedReport ? (
-                  <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-6">
-                    {/* Header */}
-                    <div className="border-b border-neutral-100 pb-4 flex justify-between items-start">
-                      <div>
-                        <span className="text-[9px] text-neutral-400 font-mono tracking-widest font-bold">DISPATCH DETAILED ANALYSIS</span>
-                        <h3 className="font-display font-bold text-base text-neutral-900 uppercase">CASE REF: {selectedReport.id}</h3>
-                      </div>
-                      
-                      {/* Interactive Status updating dropdown */}
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-neutral-400">STATUS CONTROL:</span>
-                        <select
-                          value={selectedReport.status}
-                          onChange={e => handleUpdateReportStatus(selectedReport.id, e.target.value)}
-                          className="px-3 py-1.5 bg-neutral-100 border border-neutral-200 text-neutral-800 font-mono text-[11px] font-bold rounded-xl focus:outline-none cursor-pointer"
-                        >
-                          <option value="PENDING">PENDING</option>
-                          <option value="UNDER_REVIEW">UNDER_REVIEW</option>
-                          <option value="APPROVED">APPROVED (FIR)</option>
-                          <option value="REJECTED">REJECTED</option>
-                        </select>
+                        <span className="font-bold text-neutral-900">{u.username}</span>
+                        <span className="font-mono text-[10px] px-2 py-0.5 bg-neutral-200/70 rounded">
+                          {u.role}
+                        </span>
+                        {u.approved ? (
+                          <span className="text-[10px] font-mono text-emerald-700 font-bold">
+                            ✓ APPROVED
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono text-amber-700 font-bold">
+                            ⏳ PENDING CLEARANCE
+                          </span>
+                        )}
                       </div>
+                      <p className="text-[11px] font-mono text-neutral-500 mt-0.5">
+                        {u.email} {u.phone ? `• ${u.phone}` : ""}
+                      </p>
                     </div>
 
-                    {/* Report Information Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs font-mono">
-                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 block mb-0.5">COMPLAINANT FULLNAME</span>
-                        <span className="font-bold text-neutral-900">{selectedReport.fullName}</span>
-                      </div>
-                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 block mb-0.5">EMAIL REGISTERED</span>
-                        <span className="font-bold text-neutral-900">{selectedReport.email}</span>
-                      </div>
-                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 block mb-0.5">PHONE CONTACT</span>
-                        <span className="font-bold text-neutral-900">{selectedReport.phone}</span>
-                      </div>
-                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 col-span-2">
-                        <span className="text-[9px] text-neutral-400 block mb-0.5">ADDRESS DETAILS</span>
-                        <span className="font-bold text-neutral-900 block truncate">{selectedReport.address}</span>
-                      </div>
-                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 block mb-0.5">COORDINATES / POSITION</span>
-                        <span className="font-bold text-neutral-900 block truncate">{selectedReport.incidentLocation}</span>
-                      </div>
-                    </div>
-
-                    {/* Complaint description */}
-                    <div className="space-y-1.5">
-                      <h4 className="text-[10px] text-neutral-400 font-mono font-bold uppercase">Incident description & narrative</h4>
-                      <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-800 leading-relaxed whitespace-pre-wrap">
-                        {selectedReport.description}
-                      </div>
-                    </div>
-
-                    {/* Witness & Uploads */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                      <div>
-                        <span className="text-[9px] text-neutral-400 block mb-1">WITNESS STATEMENT DECLARED</span>
-                        <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 text-neutral-800">
-                          {selectedReport.witnessInfo || "No witnesses entered."}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-neutral-400 block mb-1">EVIDENCE PAYLOAD</span>
-                        <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 flex items-center justify-between">
-                          <span className="truncate max-w-[150px] text-[10px]">{selectedReport.evidenceName || "No file uploaded."}</span>
-                          {selectedReport.evidenceUrl && (
-                            <a 
-                              href={selectedReport.evidenceUrl} 
-                              download={selectedReport.evidenceName} 
-                              className="px-2 py-1 bg-white border border-neutral-200 hover:bg-neutral-100 rounded text-[9px] font-bold flex items-center gap-1"
-                            >
-                              <Download className="w-3 h-3" /> Get Evidence
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* FIR Generator Form panel */}
-                    <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-200 space-y-4">
-                      <div className="border-b border-neutral-200 pb-2">
-                        <h4 className="text-xs font-mono font-bold text-neutral-900 uppercase flex items-center gap-2">
-                          <ShieldAlert className="w-4 h-4 text-neutral-800" /> DEPLOY CYBER FIR CERTIFICATE
-                        </h4>
-                        <p className="text-[10px] text-neutral-500 mt-0.5">Compile official legal parameters, stamp credentials, and generate cryptographically signed code keys.</p>
-                      </div>
-
-                      <form onSubmit={handleGenerateFIR} className="space-y-3 text-xs">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-mono text-neutral-500 uppercase">JURISDICTION / HUB STATION</label>
-                            <input
-                              type="text"
-                              required
-                              value={firForm.policeStation}
-                              onChange={e => setFirForm({ ...firForm, policeStation: e.target.value })}
-                              className="w-full bg-white border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-mono text-neutral-500 uppercase">INVESTIGATING CASE OFFICER</label>
-                            <input
-                              type="text"
-                              required
-                              value={firForm.officerDetails}
-                              onChange={e => setFirForm({ ...firForm, officerDetails: e.target.value })}
-                              className="w-full bg-white border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-mono text-neutral-500 uppercase">DIGITAL VERIFIABLE SIGNATURE</label>
-                            <input
-                              type="text"
-                              required
-                              value={firForm.signature}
-                              onChange={e => setFirForm({ ...firForm, signature: e.target.value })}
-                              className="w-full bg-white border border-neutral-200 rounded-lg px-3 py-2 text-neutral-900 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-
+                    <div className="flex items-center gap-2">
+                      {!u.approved && (
                         <button
-                          type="submit"
-                          disabled={firSubmitting}
-                          className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-lg text-[11px] font-mono cursor-pointer transition disabled:opacity-50"
+                          onClick={() => handleApproveUser(u.id)}
+                          className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                         >
-                          {firSubmitting ? "FINALIZING FIR RECORDS..." : "DEPLOY AND SIGN OFFICIAL CRYPTOGRAPHIC FIR RECORD"}
+                          <UserCheck className="w-3.5 h-3.5" /> Approve &amp; Email
                         </button>
-                      </form>
-
-                      {firSuccess && (
-                        <div className={`p-3 rounded-lg text-xs font-bold leading-relaxed ${
-                          firSuccess.startsWith("🟢") ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
-                        }`}>
-                          {firSuccess}
-                        </div>
                       )}
-                    </div>
 
-                    {/* Already generated FIR details block */}
-                    {selectedReport.firDetails && (
-                      <div className="bg-neutral-900 rounded-2xl p-5 border border-neutral-800 text-neutral-300 space-y-3">
-                        <div className="border-b border-neutral-800 pb-2 flex justify-between items-center">
-                          <span className="text-[9px] text-indigo-400 font-mono font-bold tracking-widest uppercase">FIR ARCHIVE STATE</span>
-                          <span className="text-emerald-400 font-mono text-xs font-bold">NO: {selectedReport.firNumber}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-[11px] font-mono">
-                          <div>
-                            <span className="text-neutral-500 block text-[9px] uppercase">Jurisdiction Station</span>
-                            <span className="text-white font-bold">{selectedReport.firDetails.policeStation}</span>
-                          </div>
-                          <div>
-                            <span className="text-neutral-500 block text-[9px] uppercase">Investigating Officer</span>
-                            <span className="text-white font-bold">{selectedReport.firDetails.officerDetails}</span>
-                          </div>
-                          <div>
-                            <span className="text-neutral-500 block text-[9px] uppercase">Audit Security Key</span>
-                            <span className="text-emerald-400 font-bold truncate block">{selectedReport.firDetails.verificationCode}</span>
-                          </div>
-                          <div>
-                            <span className="text-neutral-500 block text-[9px] uppercase">Officer Signature</span>
-                            <span className="text-white font-bold font-serif italic text-sm">{selectedReport.firDetails.signature}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                      {currentUser.role === UserRole.SUPER_ADMIN &&
+                        u.id !== currentUser.id && (
+                          <>
+                            <select
+                              value={u.role}
+                              onChange={(e) =>
+                                handleChangeRole(u.id, e.target.value as UserRole)
+                              }
+                              className="bg-white border border-neutral-200 rounded-xl px-2.5 py-1.5 font-mono text-[11px]"
+                            >
+                              <option value={UserRole.STUDENT}>STUDENT</option>
+                              {ADMIN_ROLES.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-2 text-neutral-400 hover:text-red-600 cursor-pointer"
+                              title="Delete User"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                    </div>
                   </div>
-                ) : (
-                  <div className="bg-white rounded-2xl p-16 border border-neutral-200/85 shadow-sm text-center text-neutral-400 space-y-3">
-                    <Shield className="w-12 h-12 mx-auto text-neutral-300 stroke-1 animate-pulse" />
-                    <h3 className="font-display font-bold text-lg text-neutral-700">NO CASE SELECTED FOR ANALYSIS</h3>
-                    <p className="text-xs max-w-sm mx-auto">Select any incident dispatch report from the left sidebar register grid to analyze security packets, verify evidence, issue legal clauses, and sign printable FIR certificates.</p>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {/* 9. ACADEMY VAULT & CURRICULUM CONTROL CENTER */}
-        {activeSubTab === "academy" && (
-          <div className="space-y-6 animate-fadeIn" id="admin_academy_workspace">
-            {/* Header banner */}
-            <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="font-display font-bold text-xl text-neutral-900 uppercase">ACADEMY VAULT & CURRICULUM WORKSPACE</h2>
-                <p className="text-xs text-neutral-500">Deploy elite training courses, upload lecture streams, inject laboratory reports, and manage active Cadet comments.</p>
-              </div>
-              <button 
-                onClick={fetchAdminData}
-                className="p-2.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 text-neutral-800 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-mono font-bold"
+        {/* 4. DIRECT INBOXES (CONTACT / TICKETS / LIVE SOC CHAT) */}
+        {activeTab === "inbox" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div className="flex gap-2 bg-white p-2 rounded-2xl border border-neutral-200 text-xs font-mono">
+              <button
+                onClick={() => setInboxSubTab("messages")}
+                className={`flex-1 py-2.5 rounded-xl font-bold cursor-pointer ${
+                  inboxSubTab === "messages"
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-600"
+                }`}
               >
-                <RefreshCw className="w-4 h-4" /> REFRESH NODES
+                Contact Inquiries ({messages.length})
+              </button>
+              <button
+                onClick={() => setInboxSubTab("tickets")}
+                className={`flex-1 py-2.5 rounded-xl font-bold cursor-pointer ${
+                  inboxSubTab === "tickets"
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-600"
+                }`}
+              >
+                Support Tickets ({tickets.length})
+              </button>
+              <button
+                onClick={() => setInboxSubTab("chats")}
+                className={`flex-1 py-2.5 rounded-xl font-bold cursor-pointer ${
+                  inboxSubTab === "chats"
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-600"
+                }`}
+              >
+                Live SOC Chats ({chatSessions.length})
               </button>
             </div>
 
-            {/* Micro Stats Indicators */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm">
-                <span className="text-[10px] font-mono text-neutral-400 block uppercase font-bold">Active Courses</span>
-                <span className="text-2xl font-display font-bold text-neutral-900 mt-1 block">{courses.length}</span>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm">
-                <span className="text-[10px] font-mono text-neutral-400 block uppercase font-bold">Total Lessons</span>
-                <span className="text-2xl font-display font-bold text-neutral-900 mt-1 block">
-                  {courses.reduce((acc, c) => acc + (c.lessons?.length || 0), 0)}
-                </span>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm">
-                <span className="text-[10px] font-mono text-neutral-400 block uppercase font-bold">Total Media Streams</span>
-                <span className="text-2xl font-display font-bold text-neutral-900 mt-1 block">
-                  {courses.reduce((acc, c) => acc + (c.lessons?.filter(l => l.video)?.length || 0), 0)}
-                </span>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-sm">
-                <span className="text-[10px] font-mono text-neutral-400 block uppercase font-bold">CDN Nodes</span>
-                <span className="text-xs font-mono font-bold text-emerald-600 mt-2.5 block flex items-center gap-1">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span> Cloudinary Direct
-                </span>
-              </div>
-            </div>
-
-            {/* Error / Success logs */}
-            {academySuccess && (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold font-mono">
-                {academySuccess}
-              </div>
-            )}
-            {academyError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-bold font-mono">
-                {academyError}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Side: Course forms and registry */}
-              <div className="lg:col-span-7 space-y-6">
-                
-                {/* Course Form */}
-                <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-950 uppercase tracking-wider flex items-center gap-2">
-                    <Plus className="w-4 h-4 text-neutral-950" />
-                    {editingCourseId ? "Modify Course Registry" : "Register New Security Course"}
-                  </h3>
-                  
-                  <form onSubmit={handleCreateOrUpdateCourse} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Course Title</label>
-                        <input 
-                          type="text" 
-                          required
-                          placeholder="e.g., Advanced Penetration Testing"
-                          value={courseForm.title}
-                          onChange={e => setCourseForm({ ...courseForm, title: e.target.value })}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Thumbnail URL</label>
-                        <input 
-                          type="text" 
-                          placeholder="Image URL (Unsplash/Cloudinary)"
-                          value={courseForm.thumbnail}
-                          onChange={e => setCourseForm({ ...courseForm, thumbnail: e.target.value })}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Syllabus Category</label>
-                        <select 
-                          value={courseForm.category}
-                          onChange={e => setCourseForm({ ...courseForm, category: e.target.value })}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400"
-                        >
-                          <option value="Penetration Testing">Penetration Testing</option>
-                          <option value="Incident Response">Incident Response</option>
-                          <option value="Reverse Engineering">Reverse Engineering</option>
-                          <option value="Cryptography">Cryptography</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Expertise Level</label>
-                        <select 
-                          value={courseForm.level}
-                          onChange={e => setCourseForm({ ...courseForm, level: e.target.value as any })}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400"
-                        >
-                          <option value="Beginner">Beginner</option>
-                          <option value="Intermediate">Intermediate</option>
-                          <option value="Expert">Expert</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Course Overview / Description</label>
-                      <textarea 
-                        rows={3}
-                        placeholder="Comprehensive course syllabus description..."
-                        value={courseForm.description}
-                        onChange={e => setCourseForm({ ...courseForm, description: e.target.value })}
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400 resize-none"
-                      />
-                    </div>
-
-                    <div className="flex gap-2 justify-end pt-2">
-                      {editingCourseId && (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setEditingCourseId(null);
-                            setCourseForm({ title: "", description: "", category: "Penetration Testing", level: "Intermediate", thumbnail: "" });
-                          }}
-                          className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold transition cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      <button 
-                        type="submit"
-                        className="px-5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                      >
-                        {editingCourseId ? "Save Modifications" : "Deploy Course Node"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Course List Registry */}
-                <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-                  <h3 className="font-display font-bold text-sm text-neutral-950 uppercase tracking-wider">Active Course Registry ({courses.length})</h3>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                    {courses.map(course => (
-                      <div 
-                        key={course.id} 
-                        className={`p-4 rounded-xl border flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between transition ${
-                          selectedCourseForLessons?.id === course.id 
-                            ? "border-neutral-900 bg-neutral-50" 
-                            : "border-neutral-200/60 bg-white"
-                        }`}
-                      >
-                        <div className="flex gap-3 items-center">
-                          <img 
-                            src={course.thumbnail || "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=150"} 
-                            alt={course.title} 
-                            className="w-12 h-12 object-cover rounded-lg border border-neutral-100"
-                          />
-                          <div>
-                            <h4 className="text-xs font-display font-bold text-neutral-900">{course.title}</h4>
-                            <div className="flex gap-2 items-center text-[9px] font-mono text-neutral-400 mt-1">
-                              <span className="px-1.5 py-0.5 bg-neutral-100 text-neutral-600 rounded">{course.category}</span>
-                              <span>•</span>
-                              <span>{course.level}</span>
-                              <span>•</span>
-                              <span className="text-neutral-500 font-bold">{course.lessons?.length || 0} Modules</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                          <button 
-                            onClick={() => setSelectedCourseForLessons(course)}
-                            className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-lg text-[10px] font-bold font-mono transition cursor-pointer flex items-center gap-1"
-                          >
-                            Syllabus ({course.lessons?.length || 0})
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setEditingCourseId(course.id);
-                              setCourseForm({
-                                title: course.title,
-                                description: course.description || "",
-                                category: course.category,
-                                level: course.level,
-                                thumbnail: course.thumbnail || ""
-                              });
-                            }}
-                            className="p-1.5 hover:bg-neutral-100 rounded-lg text-neutral-500 hover:text-neutral-900 cursor-pointer"
-                            title="Edit Course"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteCourse(course.id)}
-                            className="p-1.5 hover:bg-red-50 rounded-lg text-neutral-400 hover:text-red-600 cursor-pointer"
-                            title="Delete Course Node"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {courses.length === 0 && (
-                      <p className="text-center text-xs text-neutral-400 py-12 font-mono">No courses found on active cluster nodes.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Side: Lessons and upload media vault */}
-              <div className="lg:col-span-5">
-                {selectedCourseForLessons ? (
-                  <div className="space-y-6">
-                    
-                    {/* Selected Course Syllabus Modules */}
-                    <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-                      <div className="border-b border-neutral-100 pb-3 flex items-center justify-between">
+            {inboxSubTab === "messages" && (
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+                <h3 className="font-display font-bold text-lg text-neutral-900">
+                  Direct Compliance &amp; SLA Inquiries
+                </h3>
+                {messages.length === 0 ? (
+                  <p className="text-xs text-neutral-500">No contact inquiries yet.</p>
+                ) : (
+                  messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-5 rounded-2xl border border-neutral-200 bg-neutral-50 space-y-3 text-xs"
+                    >
+                      <div className="flex justify-between">
                         <div>
-                          <span className="text-[8px] font-mono text-neutral-400 uppercase font-bold">COURSE SYLLABUS VAULT</span>
-                          <h3 className="font-display font-bold text-sm text-neutral-950 mt-0.5">{selectedCourseForLessons.title}</h3>
+                          <strong>{m.subject}</strong> — {m.name} ({m.email})
                         </div>
-                        <span className="px-2 py-0.5 bg-neutral-900 text-white text-[9px] font-mono rounded font-bold">
-                          {selectedCourseForLessons.lessons?.length || 0} MODULES
+                        <span className="font-mono text-[10px] text-neutral-500">
+                          {m.status}
                         </span>
                       </div>
-
-                      <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                        {selectedCourseForLessons.lessons && selectedCourseForLessons.lessons.length > 0 ? (
-                          selectedCourseForLessons.lessons.map((lesson, idx) => (
-                            <div key={lesson.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/60 flex items-center justify-between">
-                              <div className="flex gap-2.5 items-center">
-                                <span className="w-5 h-5 rounded-full bg-neutral-200 text-neutral-700 text-[10px] font-mono font-bold flex items-center justify-center">
-                                  {idx + 1}
-                                </span>
-                                <div>
-                                  <h4 className="text-xs font-bold text-neutral-900">{lesson.title}</h4>
-                                  <span className="text-[9px] font-mono text-neutral-400 mt-0.5 block">
-                                    {lesson.video ? "📹 Video Stream staged" : "📄 Lab documentation only"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <button 
-                                onClick={() => handleDeleteLesson(lesson.id)}
-                                className="p-1.5 hover:bg-red-50 rounded-lg text-neutral-400 hover:text-red-600 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-xs text-neutral-400 italic py-6 text-center">Syllabus is empty. Upload training assets below to populate modules.</p>
-                        )}
+                      <p className="text-neutral-700">{m.message}</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Write official reply (sent via Resend no-reply@thamjj13.top)..."
+                          value={replyText[m.id] || ""}
+                          onChange={(e) =>
+                            setReplyText((prev) => ({
+                              ...prev,
+                              [m.id]: e.target.value,
+                            }))
+                          }
+                          className="flex-1 bg-white border border-neutral-200 rounded-xl px-3 py-2"
+                        />
+                        <button
+                          onClick={() => handleReplyContact(m.id)}
+                          className="px-4 py-2 bg-neutral-900 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Send Email
+                        </button>
                       </div>
                     </div>
-
-                    {/* Add Lesson with file drag-and-drop & progress bar */}
-                    <div className="bg-white rounded-2xl p-6 border border-neutral-200/80 shadow-sm space-y-4">
-                      <h3 className="font-display font-bold text-sm text-neutral-950 uppercase tracking-wider flex items-center gap-2">
-                        <Upload className="w-4 h-4" />
-                        Append Lecture Module
-                      </h3>
-
-                      <form onSubmit={handleCreateLesson} className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Lesson Title</label>
-                          <input 
-                            type="text" 
-                            required
-                            placeholder="e.g., Module 01: Reconnaissance Operations"
-                            value={lessonForm.title}
-                            onChange={e => setLessonForm({ ...lessonForm, title: e.target.value })}
-                            className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold">Module Description</label>
-                          <textarea 
-                            rows={2}
-                            placeholder="Short overview of the lesson curriculum goals..."
-                            value={lessonForm.description}
-                            onChange={e => setLessonForm({ ...lessonForm, description: e.target.value })}
-                            className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-400 resize-none"
-                          />
-                        </div>
-
-                        {/* DRAG & DROP AREA */}
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold block">Lecture Asset Upload Center</label>
-                          <div 
-                            onDragEnter={handleDrag}
-                            onDragOver={handleDrag}
-                            onDragLeave={handleDrag}
-                            onDrop={handleDrop}
-                            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition relative flex flex-col items-center justify-center ${
-                              dragActive 
-                                ? "border-neutral-900 bg-neutral-50/80" 
-                                : "border-neutral-200 hover:border-neutral-400 bg-neutral-50/40"
-                            }`}
-                            onClick={() => document.getElementById("admin_file_upload_input")?.click()}
-                          >
-                            <input 
-                              type="file"
-                              id="admin_file_upload_input"
-                              accept="video/*,application/pdf"
-                              onChange={handleFileInputChange}
-                              className="hidden"
-                            />
-                            
-                            <Upload className="w-8 h-8 text-neutral-400 mb-2 stroke-1" />
-                            <span className="text-xs text-neutral-800 font-bold block">Drag & Drop Lesson Video or PDF here</span>
-                            <span className="text-[10px] text-neutral-400 font-mono mt-1 block">Supports video streams (.mp4) and lab documents (.pdf) up to 2GB</span>
-                          </div>
-                        </div>
-
-                        {/* UPLOAD STATUS PANEL & ACTION CONTROLS */}
-                        {uploadingFile && (
-                          <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl space-y-3">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-bold text-neutral-800 truncate max-w-[200px]">{uploadingFile.name}</span>
-                              <span className="text-[10px] font-mono text-neutral-400">{(uploadingFile.size / (1024 * 1024)).toFixed(2)} MB</span>
-                            </div>
-
-                            {/* PROGRESS BAR */}
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-[10px] font-mono">
-                                <span className="uppercase font-bold text-neutral-500">Secure Node Syncing...</span>
-                                <span className="font-bold text-neutral-900">{uploadProgress}%</span>
-                              </div>
-                              <div className="w-full bg-neutral-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full transition-all duration-300 ${
-                                    uploadStatus === "completed" 
-                                      ? "bg-emerald-500" 
-                                      : uploadStatus === "paused" 
-                                      ? "bg-amber-500" 
-                                      : "bg-neutral-900"
-                                  }`}
-                                  style={{ width: `${uploadProgress}%` }}
-                                ></div>
-                              </div>
-                            </div>
-
-                            {/* CONTROL BUTTONS */}
-                            <div className="flex gap-2 items-center justify-between pt-1">
-                              <div className="flex gap-1.5">
-                                {uploadStatus === "idle" && (
-                                  <button 
-                                    type="button"
-                                    onClick={startUpload}
-                                    className="px-3 py-1 bg-neutral-900 text-white rounded text-[10px] font-bold font-mono transition cursor-pointer"
-                                  >
-                                    Start Stream Upload
-                                  </button>
-                                )}
-                                {uploadStatus === "uploading" && (
-                                  <button 
-                                    type="button"
-                                    onClick={pauseUpload}
-                                    className="px-3 py-1 bg-amber-500 text-white rounded text-[10px] font-bold font-mono transition cursor-pointer"
-                                  >
-                                    Pause
-                                  </button>
-                                )}
-                                {uploadStatus === "paused" && (
-                                  <button 
-                                    type="button"
-                                    onClick={resumeUpload}
-                                    className="px-3 py-1 bg-neutral-900 text-white rounded text-[10px] font-bold font-mono transition cursor-pointer"
-                                  >
-                                    Resume
-                                  </button>
-                                )}
-                                {(uploadStatus === "uploading" || uploadStatus === "paused" || uploadStatus === "idle") && (
-                                  <button 
-                                    type="button"
-                                    onClick={cancelUpload}
-                                    className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-[10px] font-bold font-mono transition cursor-pointer"
-                                  >
-                                    Cancel
-                                  </button>
-                                )}
-                              </div>
-
-                              <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-neutral-200 text-neutral-700">
-                                {uploadStatus}
-                              </span>
-                            </div>
-
-                            {/* COMPRESSION & PREVIEW */}
-                            {uploadStatus === "completed" && (
-                              <div className="border-t border-neutral-200 pt-3 space-y-2">
-                                <span className="text-[9px] font-mono text-emerald-600 font-bold block flex items-center gap-1">
-                                  ✓ Network upload and metadata auto-compression finalized.
-                                </span>
-                                
-                                {uploadingFile.type.startsWith("video/") && (
-                                  <div className="rounded-lg overflow-hidden border border-neutral-200 bg-black aspect-video relative">
-                                    <video 
-                                      src={lessonForm.videoUrl} 
-                                      controls 
-                                      className="w-full h-full object-cover"
-                                      poster={lessonForm.thumbnail}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        <button 
-                          type="submit"
-                          disabled={!lessonForm.title}
-                          className="w-full py-2.5 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-bold font-mono transition disabled:opacity-50 cursor-pointer uppercase tracking-wider"
-                        >
-                          Save & Append Lesson Node
-                        </button>
-                      </form>
-                    </div>
-
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-2xl p-16 border border-neutral-200/85 shadow-sm text-center text-neutral-400 space-y-3">
-                    <BookOpen className="w-12 h-12 mx-auto text-neutral-300 stroke-1 animate-pulse" />
-                    <h3 className="font-display font-bold text-sm text-neutral-700">NO COURSE SYLLABUS SELECTED</h3>
-                    <p className="text-[11px] max-w-xs mx-auto leading-relaxed">Select any training course registry node from the left sidebar registry grid to stage modules, trigger uploaders, and compress stream lectures.</p>
-                  </div>
+                  ))
                 )}
               </div>
-            </div>
-          </div>
+            )}
+
+            {inboxSubTab === "tickets" && (
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+                <h3 className="font-display font-bold text-lg text-neutral-900">
+                  Cadet Helpdesk Tickets
+                </h3>
+                {tickets.length === 0 ? (
+                  <p className="text-xs text-neutral-500">No support tickets open.</p>
+                ) : (
+                  tickets.map((tk) => (
+                    <div
+                      key={tk.id}
+                      className="p-5 rounded-2xl border border-neutral-200 bg-neutral-50 space-y-3 text-xs"
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <strong>{tk.subject}</strong> — {tk.username} ({tk.priority})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold">
+                            {tk.status}
+                          </span>
+                          {tk.status !== "RESOLVED" && (
+                            <button
+                              onClick={() => handleResolveTicket(tk.id)}
+                              className="px-2.5 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold cursor-pointer"
+                            >
+                              Mark Resolved
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-neutral-700">{tk.description || tk.message}</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Reply to cadet (emails notification via Resend)..."
+                          value={ticketReplyText[tk.id] || ""}
+                          onChange={(e) =>
+                            setTicketReplyText((prev) => ({
+                              ...prev,
+                              [tk.id]: e.target.value,
+                            }))
+                          }
+                          className="flex-1 bg-white border border-neutral-200 rounded-xl px-3 py-2"
+                        />
+                        <button
+                          onClick={() => handleReplyTicket(tk.id)}
+                          className="px-4 py-2 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                        >
+                          Reply
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {inboxSubTab === "chats" && (
+              <div className="bg-white rounded-3xl p-6 border border-neutral-200 shadow-sm grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[420px]">
+                <div className="md:col-span-4 border-r border-neutral-100 pr-4 space-y-2">
+                  <h4 className="font-display font-bold text-sm text-neutral-900 mb-3">
+                    Active Visitor Channels
+                  </h4>
+                  {chatSessions.length === 0 ? (
+                    <p className="text-xs text-neutral-400">No chat sessions yet.</p>
+                  ) : (
+                    chatSessions.map((cs) => (
+                      <button
+                        key={cs.id}
+                        onClick={() => setActiveChatId(cs.id)}
+                        className={`w-full text-left p-3 rounded-xl border text-xs transition cursor-pointer ${
+                          activeChatId === cs.id
+                            ? "bg-neutral-900 text-white border-neutral-900"
+                            : "bg-neutral-50 border-neutral-200 text-neutral-800"
+                        }`}
+                      >
+                        <div className="font-bold truncate">{cs.visitorName}</div>
+                        <div className="text-[10px] opacity-70 font-mono truncate">
+                          {cs.id} • {cs.messages.length} msgs
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="md:col-span-8 flex flex-col justify-between">
+                  {selectedChat ? (
+                    <>
+                      <div className="space-y-2 max-h-72 overflow-y-auto p-3 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs">
+                        {selectedChat.messages.map((msg) => (
+                          <div key={msg.id} className="p-2.5 bg-white rounded-xl border border-neutral-200">
+                            <span className="font-mono text-[10px] text-indigo-700 font-bold block">
+                              {msg.senderName} ({msg.senderRole})
+                            </span>
+                            <p className="text-neutral-800 mt-0.5">{msg.content}</p>
+                            {msg.imageUrl && (
+                              <img
+                                src={msg.imageUrl}
+                                alt="chat attachment"
+                                className="mt-2 max-h-32 rounded border"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <form onSubmit={handleSendAdminChat} className="flex gap-2 mt-4">
+                        <input
+                          type="text"
+                          value={adminChatInput}
+                          onChange={(e) => setAdminChatInput(e.target.value)}
+                          placeholder="Respond to live visitor as SOC Analyst..."
+                          className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-xs"
+                        />
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Send
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-xs text-neutral-400">
+                      Select a visitor chat session on the left to respond.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </motion.div>
         )}
-      </main>
+
+        {/* 5. CMS DATA BUILDER */}
+        {activeTab === "cms" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-6 text-xs"
+          >
+            <div className="flex flex-wrap gap-2 border-b border-neutral-100 pb-4">
+              {[
+                { id: "slides", label: "Hero Slides" },
+                { id: "services", label: "Services" },
+                { id: "team", label: "Command Team" },
+                { id: "gallery", label: "Media Gallery" },
+                { id: "faqs", label: "FAQs" },
+                { id: "stats", label: "Platform Stats" },
+                { id: "alliances", label: "Alliances" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setCmsSubTab(t.id as any)}
+                  className={`px-3.5 py-2 rounded-xl font-mono font-bold cursor-pointer ${
+                    cmsSubTab === t.id
+                      ? "bg-neutral-900 text-white"
+                      : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {cmsSubTab === "slides" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    placeholder="Hero Title"
+                    value={newSlide.title}
+                    onChange={(e) => setNewSlide({ ...newSlide, title: e.target.value })}
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="CTA Button Text"
+                    value={newSlide.ctaText}
+                    onChange={(e) =>
+                      setNewSlide({ ...newSlide, ctaText: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Subtitle"
+                  value={newSlide.subtitle}
+                  onChange={(e) =>
+                    setNewSlide({ ...newSlide, subtitle: e.target.value })
+                  }
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <div className="flex gap-3 items-center">
+                  <input
+                    placeholder="Background Image URL (or upload via Cloudinary)"
+                    value={newSlide.bgImage}
+                    onChange={(e) =>
+                      setNewSlide({ ...newSlide, bgImage: e.target.value })
+                    }
+                    className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <label className="px-4 py-2.5 bg-neutral-100 border border-neutral-200 rounded-xl font-bold cursor-pointer">
+                    {uploadingState.slide ? "Uploading..." : "Upload Image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f)
+                          uploadViaCloudinary(f, "slide", "thamjj13/cms", (url) =>
+                            setNewSlide((p) => ({ ...p, bgImage: url }))
+                          );
+                      }}
+                    />
+                  </label>
+                  <button
+                    onClick={() =>
+                      newSlide.title &&
+                      handleAddCmsItem("hero-slides", newSlide, () =>
+                        setNewSlide({
+                          title: "",
+                          subtitle: "",
+                          ctaText: "Explore Academy",
+                          bgImage: "",
+                        })
+                      )
+                    }
+                    className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Add Slide
+                  </button>
+                </div>
+
+                <div className="space-y-2 pt-3">
+                  {heroSlides.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span className="font-bold">{s.title}</span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("hero-slides", s.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "services" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    placeholder="Service Title"
+                    value={newService.title}
+                    onChange={(e) =>
+                      setNewService({ ...newService, title: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Icon (Shield, Terminal, Zap, Database, Globe)"
+                    value={newService.icon}
+                    onChange={(e) =>
+                      setNewService({ ...newService, icon: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <button
+                    onClick={() =>
+                      newService.title &&
+                      handleAddCmsItem("services", newService, () =>
+                        setNewService({ title: "", description: "", icon: "Shield" })
+                      )
+                    }
+                    className="bg-neutral-900 text-white rounded-xl font-bold py-2.5 cursor-pointer"
+                  >
+                    Add Service
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Service Description"
+                  value={newService.description}
+                  onChange={(e) =>
+                    setNewService({ ...newService, description: e.target.value })
+                  }
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <div className="space-y-2">
+                  {servicesList.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>
+                        <strong>{s.title}</strong> — {s.description}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("services", s.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "team" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    placeholder="Officer Name"
+                    value={newMember.name}
+                    onChange={(e) =>
+                      setNewMember({ ...newMember, name: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Role / Title"
+                    value={newMember.role}
+                    onChange={(e) =>
+                      setNewMember({ ...newMember, role: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Location"
+                    value={newMember.location}
+                    onChange={(e) =>
+                      setNewMember({ ...newMember, location: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <input
+                    placeholder="Avatar URL"
+                    value={newMember.avatar}
+                    onChange={(e) =>
+                      setNewMember({ ...newMember, avatar: e.target.value })
+                    }
+                    className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <label className="px-4 py-2.5 bg-neutral-100 border border-neutral-200 rounded-xl font-bold cursor-pointer">
+                    {uploadingState.member ? "Uploading..." : "Cloudinary Upload"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f)
+                          uploadViaCloudinary(f, "member", "thamjj13/team", (url) =>
+                            setNewMember((p) => ({ ...p, avatar: url }))
+                          );
+                      }}
+                    />
+                  </label>
+                  <button
+                    onClick={() =>
+                      newMember.name &&
+                      handleAddCmsItem("team-members", newMember, () =>
+                        setNewMember({
+                          name: "",
+                          role: "",
+                          location: "Singapore HQ",
+                          avatar: "",
+                          bio: "",
+                        })
+                      )
+                    }
+                    className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Add Member
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {teamMembers.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>
+                        <strong>{t.name}</strong> — {t.role} ({t.location})
+                      </span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("team-members", t.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "gallery" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    placeholder="Photo Caption"
+                    value={newGallery.title}
+                    onChange={(e) =>
+                      setNewGallery({ ...newGallery, title: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Category"
+                    value={newGallery.category}
+                    onChange={(e) =>
+                      setNewGallery({ ...newGallery, category: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <div className="flex gap-2">
+                    <label className="flex-1 py-2.5 px-3 bg-neutral-100 border border-neutral-200 rounded-xl font-bold text-center cursor-pointer">
+                      {uploadingState.gallery ? "Uploading..." : "Upload Photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f)
+                            uploadViaCloudinary(
+                              f,
+                              "gallery",
+                              "thamjj13/gallery",
+                              (url) => setNewGallery((p) => ({ ...p, url }))
+                            );
+                        }}
+                      />
+                    </label>
+                    <button
+                      onClick={() =>
+                        newGallery.title &&
+                        newGallery.url &&
+                        handleAddCmsItem("gallery", newGallery, () =>
+                          setNewGallery({
+                            title: "",
+                            category: "Operations",
+                            url: "",
+                          })
+                        )
+                      }
+                      className="px-4 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                    >
+                      Publish
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {galleryItems.map((g) => (
+                    <div
+                      key={g.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>
+                        <strong>{g.title}</strong> ({g.category})
+                      </span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("gallery", g.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "faqs" && (
+              <div className="space-y-4">
+                <input
+                  placeholder="Question"
+                  value={newFaq.q}
+                  onChange={(e) => setNewFaq({ ...newFaq, q: e.target.value })}
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <textarea
+                  rows={2}
+                  placeholder="Answer"
+                  value={newFaq.a}
+                  onChange={(e) => setNewFaq({ ...newFaq, a: e.target.value })}
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <button
+                  onClick={() =>
+                    newFaq.q &&
+                    handleAddCmsItem("faqs", newFaq, () => setNewFaq({ q: "", a: "" }))
+                  }
+                  className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Add FAQ
+                </button>
+                <div className="space-y-2">
+                  {faqsList.map((f) => (
+                    <div
+                      key={f.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>{f.question || f.q}</span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("faqs", f.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "stats" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <input
+                    placeholder="Label (e.g. UPTIME)"
+                    value={newStat.label}
+                    onChange={(e) =>
+                      setNewStat({ ...newStat, label: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Value (e.g. 99.98%)"
+                    value={newStat.value}
+                    onChange={(e) =>
+                      setNewStat({ ...newStat, value: e.target.value })
+                    }
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Description"
+                    value={newStat.desc}
+                    onChange={(e) => setNewStat({ ...newStat, desc: e.target.value })}
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <button
+                    onClick={() =>
+                      newStat.label &&
+                      handleAddCmsItem("stats", newStat, () =>
+                        setNewStat({ label: "", value: "", desc: "" })
+                      )
+                    }
+                    className="bg-neutral-900 text-white rounded-xl font-bold py-2.5 cursor-pointer"
+                  >
+                    Add Stat
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {statsList.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>
+                        <strong>{s.label}:</strong> {s.value} —{" "}
+                        {s.description || s.desc}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("stats", s.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cmsSubTab === "alliances" && (
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <input
+                    placeholder="Compliance Standard / Alliance Name"
+                    value={newAlliance.name}
+                    onChange={(e) => setNewAlliance({ name: e.target.value })}
+                    className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <button
+                    onClick={() =>
+                      newAlliance.name &&
+                      handleAddCmsItem("alliances", newAlliance, () =>
+                        setNewAlliance({ name: "" })
+                      )
+                    }
+                    className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Add Alliance
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {alliancesList.map((a) => (
+                    <div
+                      key={a.id}
+                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                    >
+                      <span>{a.name}</span>
+                      <button
+                        onClick={() => handleDeleteCmsItem("alliances", a.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* 6. ACADEMY CURRICULUM */}
+        {activeTab === "courses" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6 text-xs"
+          >
+            <form
+              onSubmit={handleCreateCourse}
+              className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4"
+            >
+              <h3 className="font-display font-bold text-lg text-neutral-900">
+                Deploy New Academy Course
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  required
+                  placeholder="Course Title *"
+                  value={courseTitle}
+                  onChange={(e) => setCourseTitle(e.target.value)}
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <input
+                  required
+                  placeholder="Category"
+                  value={courseCat}
+                  onChange={(e) => setCourseCat(e.target.value)}
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <select
+                  value={courseLevel}
+                  onChange={(e) => setCourseLevel(e.target.value as any)}
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                >
+                  <option value="Beginner">Beginner</option>
+                  <option value="Intermediate">Intermediate</option>
+                  <option value="Advanced">Advanced</option>
+                </select>
+              </div>
+              <textarea
+                required
+                rows={2}
+                placeholder="Course Syllabus Summary *"
+                value={courseDesc}
+                onChange={(e) => setCourseDesc(e.target.value)}
+                className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+              />
+              <div className="flex gap-3">
+                <input
+                  placeholder="Thumbnail URL (or upload via Cloudinary)"
+                  value={courseThumb}
+                  onChange={(e) => setCourseThumb(e.target.value)}
+                  className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <label className="px-4 py-2.5 bg-neutral-100 border border-neutral-200 rounded-xl font-bold cursor-pointer">
+                  {uploadingState.courseThumb ? "Uploading..." : "Cloudinary Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f)
+                        uploadViaCloudinary(
+                          f,
+                          "courseThumb",
+                          "thamjj13/courses",
+                          (url) => setCourseThumb(url)
+                        );
+                    }}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Publish Course
+                </button>
+              </div>
+            </form>
+
+            {courses.length > 0 && (
+              <form
+                onSubmit={handleAddLesson}
+                className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4"
+              >
+                <h3 className="font-display font-bold text-lg text-neutral-900">
+                  Append Video Module to Course
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <select
+                    value={selectedCourseForLesson}
+                    onChange={(e) => setSelectedCourseForLesson(e.target.value)}
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  >
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    required
+                    placeholder="Lesson Title *"
+                    value={lessonTitle}
+                    onChange={(e) => setLessonTitle(e.target.value)}
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <input
+                    placeholder="Duration (e.g. 22:15)"
+                    value={lessonDuration}
+                    onChange={(e) => setLessonDuration(e.target.value)}
+                    className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Lesson Overview"
+                  value={lessonDesc}
+                  onChange={(e) => setLessonDesc(e.target.value)}
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <div className="flex gap-3">
+                  <input
+                    placeholder="MP4 Video URL (or upload via Cloudinary)"
+                    value={lessonVideoUrl}
+                    onChange={(e) => setLessonVideoUrl(e.target.value)}
+                    className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                  />
+                  <label className="px-4 py-2.5 bg-neutral-100 border border-neutral-200 rounded-xl font-bold cursor-pointer">
+                    {uploadingState.lessonVid ? "Uploading..." : "Upload Video"}
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f)
+                          uploadViaCloudinary(
+                            f,
+                            "lessonVid",
+                            "thamjj13/videos",
+                            (url) => setLessonVideoUrl(url)
+                          );
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Add Lesson
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-3">
+              <h4 className="font-display font-bold text-base text-neutral-900">
+                Active Academy Tracks ({courses.length})
+              </h4>
+              {courses.map((c) => (
+                <div
+                  key={c.id}
+                  className="p-4 rounded-2xl border border-neutral-200 flex justify-between items-center bg-neutral-50/40"
+                >
+                  <div>
+                    <div className="font-bold text-neutral-900">{c.title}</div>
+                    <div className="text-[11px] font-mono text-neutral-500">
+                      {c.category} • {c.level} • {c.lessons.length} lessons
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteCourse(c.id)}
+                    className="p-2 text-neutral-400 hover:text-red-600 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 7. RESEND MAIL GATEWAY */}
+        {activeTab === "resend" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6 text-xs"
+          >
+            <form
+              onSubmit={handleSaveResend}
+              className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-5"
+            >
+              <div className="flex flex-wrap justify-between items-start gap-3 border-b border-neutral-100 pb-4">
+                <div>
+                  <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                    <Mail className="w-5 h-5" /> Resend.com Transactional Mail Gateway
+                  </h3>
+                  <p className="text-neutral-500 mt-1">
+                    Powers all Admin &amp; Cadet OTPs, Case Report confirmations, FIR approvals, and helpdesk replies via{" "}
+                    <strong>no-reply@thamjj13.top</strong>.
+                  </p>
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full font-mono text-[10px] font-bold ${
+                    resendConfig.apiKeyConfigured
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {resendConfig.apiKeyConfigured
+                    ? `CONNECTED (${resendConfig.source})`
+                    : "API KEY UNSET"}
+                </span>
+              </div>
+
+              {resendFeedback && (
+                <div
+                  className={`p-3.5 rounded-xl font-mono border ${
+                    resendFeedback.ok
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  {resendFeedback.msg}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-mono text-[10px] text-neutral-500 mb-1 uppercase">
+                    Verified Sender Email (Resend Domain)
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={resendConfig.fromEmail}
+                    onChange={(e) =>
+                      setResendConfig({ ...resendConfig, fromEmail: e.target.value })
+                    }
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] text-neutral-500 mb-1 uppercase">
+                    Sender Display Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={resendConfig.fromName}
+                    onChange={(e) =>
+                      setResendConfig({ ...resendConfig, fromName: e.target.value })
+                    }
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                  />
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] text-neutral-500 mb-1 uppercase">
+                    Admin Incident Alert Inbox
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={resendConfig.adminAlertEmail}
+                    onChange={(e) =>
+                      setResendConfig({
+                        ...resendConfig,
+                        adminAlertEmail: e.target.value,
+                      })
+                    }
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] text-neutral-500 mb-1 uppercase">
+                    Resend API Key (re_...) — Optional if RESEND_API_KEY env is set
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={
+                      resendConfig.apiKeyMasked || "re_xxxxxxxxxxxxxxxxx"
+                    }
+                    value={resendApiKeyInput}
+                    onChange={(e) => setResendApiKeyInput(e.target.value)}
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-between items-center gap-4 pt-2">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl cursor-pointer"
+                >
+                  Save Resend Settings
+                </button>
+
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="email"
+                    placeholder="Test recipient email"
+                    value={testEmailTarget}
+                    onChange={(e) => setTestEmailTarget(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 font-mono"
+                  />
+                  <button
+                    type="button"
+                    disabled={testingResend}
+                    onClick={handleTestResend}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <SendHorizontal className="w-3.5 h-3.5" />
+                    {testingResend ? "Sending..." : "Send Test Email"}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* MAIL DELIVERY LEDGER */}
+            <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="font-display font-bold text-base text-neutral-900">
+                  Outbound Transactional Mail Ledger ({mailLogs.length})
+                </h4>
+                <button
+                  onClick={fetchAllData}
+                  className="text-xs font-mono text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Refresh Logs
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px] font-mono">
+                  <thead>
+                    <tr className="border-b border-neutral-200 text-neutral-400 uppercase text-[10px]">
+                      <th className="py-2 pr-3">Category</th>
+                      <th className="py-2 pr-3">Recipient</th>
+                      <th className="py-2 pr-3">Subject</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {mailLogs.slice(0, 30).map((log) => (
+                      <tr key={log.id}>
+                        <td className="py-2.5 pr-3 font-bold text-neutral-800">
+                          {log.category}
+                        </td>
+                        <td className="py-2.5 pr-3 text-neutral-600">{log.toEmail}</td>
+                        <td className="py-2.5 pr-3 text-neutral-700 truncate max-w-xs">
+                          {log.subject}
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              log.status === "SENT"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : log.status === "SIMULATED"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-neutral-400">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                    {mailLogs.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-neutral-400">
+                          No outbound emails logged yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* 8. CLOUDINARY CDN & VAULT */}
+        {activeTab === "cloudinary" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6 text-xs"
+          >
+            <form
+              onSubmit={handleSaveCloudinary}
+              className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4"
+            >
+              <div className="flex justify-between items-center border-b border-neutral-100 pb-4">
+                <div>
+                  <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                    <Cloud className="w-5 h-5" /> Cloudinary Media &amp; Evidence Storage
+                  </h3>
+                  <p className="text-neutral-500 mt-1">
+                    Stores incident evidence, avatars, vault files, CMS photos, and course videos.
+                  </p>
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full font-mono text-[10px] font-bold ${
+                    cloudinaryConfig.configured
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {cloudinaryConfig.configured ? "CONNECTED" : "UNCONFIGURED"}
+                </span>
+              </div>
+
+              {cloudinarySavedMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl font-mono text-emerald-800">
+                  {cloudinarySavedMsg}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                  placeholder="Cloud Name"
+                  value={cloudinaryConfig.cloudName}
+                  onChange={(e) =>
+                    setCloudinaryConfig({
+                      ...cloudinaryConfig,
+                      cloudName: e.target.value,
+                    })
+                  }
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                />
+                <input
+                  placeholder="API Key"
+                  value={cloudinaryConfig.apiKey}
+                  onChange={(e) =>
+                    setCloudinaryConfig({
+                      ...cloudinaryConfig,
+                      apiKey: e.target.value,
+                    })
+                  }
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                />
+                <input
+                  type="password"
+                  placeholder="API Secret"
+                  value={cloudinaryConfig.apiSecret}
+                  onChange={(e) =>
+                    setCloudinaryConfig({
+                      ...cloudinaryConfig,
+                      apiSecret: e.target.value,
+                    })
+                  }
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                />
+                <input
+                  placeholder="Optional Unsigned Upload Preset"
+                  value={cloudinaryConfig.uploadPreset}
+                  onChange={(e) =>
+                    setCloudinaryConfig({
+                      ...cloudinaryConfig,
+                      uploadPreset: e.target.value,
+                    })
+                  }
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 font-mono"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl cursor-pointer"
+              >
+                Save Cloudinary Settings
+              </button>
+            </form>
+
+            <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-3">
+              <h4 className="font-display font-bold text-base text-neutral-900">
+                Global Encrypted Vault Ledger ({vaultItems.length})
+              </h4>
+              {vaultItems.map((v) => (
+                <div
+                  key={v.id}
+                  className="p-3.5 rounded-xl border border-neutral-200 flex justify-between items-center bg-neutral-50/50"
+                >
+                  <div>
+                    <div className="font-bold text-neutral-900">{v.fileName}</div>
+                    <div className="font-mono text-[10px] text-neutral-400">
+                      Uploaded by {v.uploadedBy} • {v.fileSize}
+                    </div>
+                  </div>
+                  <a
+                    href={v.cloudinaryUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                  >
+                    Open <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 9. SECURITY, EVENTS & IMMUTABLE AUDIT LOGS */}
+        {activeTab === "security" && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6 text-xs"
+          >
+            {/* Rotate Admin Password */}
+            <form
+              onSubmit={handleRotatePassword}
+              className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4"
+            >
+              <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                <Lock className="w-5 h-5" /> Rotate My Administrator Password
+              </h3>
+              {pwdMsg && (
+                <div
+                  className={`p-3 rounded-xl font-mono border ${
+                    pwdMsg.ok
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  {pwdMsg.text}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  type="password"
+                  required
+                  placeholder="Current Password"
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="New Password (min 8 chars)"
+                  value={nextPwd}
+                  onChange={(e) => setNextPwd(e.target.value)}
+                  className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                />
+                <button
+                  type="submit"
+                  className="bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl py-2.5 cursor-pointer"
+                >
+                  Rotate Password
+                </button>
+              </div>
+            </form>
+
+            {/* Cyber Events Manager */}
+            <form
+              onSubmit={handleCreateEvent}
+              className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4"
+            >
+              <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                <Calendar className="w-5 h-5" /> Academy Live Seminars &amp; CTF Events
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  required
+                  placeholder="Seminar Title *"
+                  value={newEvent.title}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, title: e.target.value })
+                  }
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <input
+                  type="date"
+                  required
+                  value={newEvent.date}
+                  onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <input
+                  placeholder="Time (e.g. 20:00 GMT+8)"
+                  value={newEvent.time}
+                  onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                  className="border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+              </div>
+              <div className="flex gap-3">
+                <input
+                  required
+                  placeholder="Briefing Description *"
+                  value={newEvent.description}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, description: e.target.value })
+                  }
+                  className="flex-1 border border-neutral-200 rounded-xl px-3 py-2.5"
+                />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-neutral-900 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Schedule Event
+                </button>
+              </div>
+              <div className="space-y-2 pt-2">
+                {eventsList.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 flex justify-between items-center"
+                  >
+                    <span>
+                      <strong>{ev.title}</strong> — {ev.date} ({ev.time})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEvent(ev.id)}
+                      className="text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </form>
+
+            {/* Developer API Keys */}
+            {currentUser.role === UserRole.SUPER_ADMIN && (
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+                <h3 className="font-display font-bold text-lg text-neutral-900 flex items-center gap-2">
+                  <Key className="w-5 h-5" /> Service Integration API Keys
+                </h3>
+                <form onSubmit={handleGenerateApiKey} className="flex gap-3">
+                  <input
+                    placeholder="Key Label (e.g. SIEM Webhook)"
+                    value={newKeyName}
+                    onChange={(e) => setNewKeyName(e.target.value)}
+                    className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-neutral-900 text-white font-bold rounded-xl cursor-pointer"
+                  >
+                    Generate Key
+                  </button>
+                </form>
+                <div className="space-y-2">
+                  {apiKeys.map((k) => (
+                    <div
+                      key={k.id}
+                      className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 flex justify-between items-center font-mono"
+                    >
+                      <div>
+                        <strong>{k.name}</strong>:{" "}
+                        <span className="text-neutral-600">{k.key}</span>
+                      </div>
+                      <button
+                        onClick={() => handleRevokeKey(k.id)}
+                        className="text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Immutable Audit Logs */}
+            <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-sm space-y-4">
+              <h3 className="font-display font-bold text-lg text-neutral-900">
+                Immutable Security Audit Ledger ({auditLogs.length})
+              </h3>
+              <div className="space-y-2 max-h-96 overflow-y-auto font-mono text-[11px]">
+                {auditLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 flex flex-wrap justify-between gap-2"
+                  >
+                    <span>
+                      <strong className="text-indigo-700">[{log.actor}]</strong>{" "}
+                      {log.action}
+                    </span>
+                    <span className="text-neutral-400">
+                      {log.ip} • {new Date(log.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </section>
     </div>
   );
 }

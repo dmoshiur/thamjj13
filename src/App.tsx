@@ -1,152 +1,410 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Shield, Terminal, Users, BookOpen, Key, LockIcon, Globe, CheckCircle2, 
-  XCircle, ArrowRight, UserPlus, FileCheck, LogIn, Menu, X, Check, AlertTriangle, HelpCircle, Activity, Mail, LogOut 
+import {
+  Shield,
+  BookOpen,
+  UserCheck,
+  Lock,
+  Award,
+  CheckCircle2,
+  XCircle,
+  Menu,
+  X,
+  User,
+  LogOut,
+  ShieldAlert,
+  RefreshCw,
+  Crown,
 } from "lucide-react";
-import { UserRole, Course, UserProfile, VisitorLog, Certificate } from "./types";
+import { motion, AnimatePresence } from "motion/react";
+
 import LandingPage from "./components/LandingPage";
 import CourseSystem from "./components/CourseSystem";
 import AdminPortal from "./components/AdminPortal";
 import StudentPortal from "./components/StudentPortal";
 import LiveChatWidget from "./components/LiveChatWidget";
+import thamLogo from "./assets/images/thamjj13_logo_1783764297314.jpg";
+
+import { UserRole, Course, Certificate } from "./types";
+
+const ADMIN_ROLES = new Set<string>([
+  UserRole.SUPER_ADMIN,
+  UserRole.SECONDARY_ADMIN,
+  UserRole.COURSE_MANAGER,
+  UserRole.SUPPORT_AGENT,
+  UserRole.MODERATOR,
+  UserRole.CONTENT_MANAGER,
+]);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("landing");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // Authentication State
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [adminDoubleOtpId, setAdminDoubleOtpId] = useState<string | null>(null);
-  const [otpStep, setOtpStep] = useState<1 | 2>(1);
-  const [otpCode, setOtpCode] = useState("");
-  const [enteredEmail, setEnteredEmail] = useState("");
 
-  // Dynamic lists from backend APIs
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    username: string;
+    email: string;
+    role: UserRole;
+  } | null>(null);
+
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [visitorLogs, setVisitorLogs] = useState<VisitorLog[]>([]);
+  const [chatSessionId, setChatSessionId] = useState<string>("");
 
-  // Cadet Registration States
+  // Bootstrap Status (One-time Super Admin Provisioning)
+  const [needsBootstrap, setNeedsBootstrap] = useState(false);
+  const [senderEmail, setSenderEmail] = useState("no-reply@thamjj13.top");
+  const [bootstrapMode, setBootstrapMode] = useState(false);
+  const [bootstrapStep, setBootstrapStep] = useState<1 | 2>(1);
+  const [bootstrapChallengeId, setBootstrapChallengeId] = useState("");
+  const [bootstrapForm, setBootstrapForm] = useState({
+    username: "",
+    email: "",
+    phone: "",
+    password: "",
+    otp: "",
+  });
+
+  // Auth Login + 2FA OTP State
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [tempAuthId, setTempAuthId] = useState<string | null>(null);
+  const [otpInput, setOtpInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Cadet Registration + OTP Verification State
   const [regUsername, setRegUsername] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPhone, setRegPhone] = useState("");
+  const [regAddress, setRegAddress] = useState("");
   const [regPassword, setRegPassword] = useState("");
-  const [regMsg, setRegMsg] = useState<string | null>(null);
-  const [regSuggestions, setRegSuggestions] = useState<string[]>([]);
-  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [regStep, setRegStep] = useState<1 | 2>(1);
+  const [regChallengeId, setRegChallengeId] = useState("");
+  const [regOtpInput, setRegOtpInput] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
+    null
+  );
+  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const [regSuccess, setRegSuccess] = useState<string | null>(null);
 
-  // Admin login states
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Admin OTP verification states
-  const [otpError, setOtpError] = useState<string | null>(null);
-
-  // Password Reset States
+  // Password Reset Flow
   const [resetEmail, setResetEmail] = useState("");
+  const [resetTempId, setResetTempId] = useState<string | null>(null);
   const [resetOtp, setResetOtp] = useState("");
-  const [resetNewPassword, setResetNewPassword] = useState("");
-  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
-  const [resetStep, setResetStep] = useState<"none" | "request" | "otp" | "password">("none");
-  const [resetError, setResetError] = useState<string | null>(null);
+  const [newResetPassword, setNewResetPassword] = useState("");
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
-  // Certificate Verification states
+  // Public Certificate Verification
   const [verifyingCertId, setVerifyingCertId] = useState("");
-  const [searchCertQuery, setSearchCertQuery] = useState("");
-  const [verifiedCert, setVerifiedCert] = useState<Certificate | null>(null);
-  const [certSearchError, setCertSearchError] = useState<string | null>(null);
-
-  // Dynamic socket floating chat sessionId
-  const [chatSessionId, setChatSessionId] = useState<string>("");
-
-  useEffect(() => {
-    // Generate visitor chat sessionId if none exists
-    let sesId = localStorage.getItem("tham_chat_session_id");
-    if (!sesId) {
-      sesId = `chat-visitor-${Math.floor(Math.random() * 899999) + 100000}`;
-      localStorage.setItem("tham_chat_session_id", sesId);
-    }
-    setChatSessionId(sesId);
-
-    // Initial API loads
-    fetchCourses();
-    trackVisitorPayload();
-    
-    // Check Auth
-    fetch("/api/auth/me")
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) {
-          setCurrentUser(data.user);
-        }
-      })
-      .catch(err => console.error("Auth check failed", err));
-  }, []);
+  const [certResult, setCertResult] = useState<{
+    valid: boolean;
+    certificate?: Certificate;
+  } | null>(null);
+  const [certChecking, setCertChecking] = useState(false);
 
   const fetchCourses = async () => {
     try {
       const res = await fetch("/api/courses");
-      const data: Course[] = await res.json();
-      setCourses(data);
+      const data = await res.json();
+      setCourses(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to load academy courses:", err);
+      console.error("Failed to load courses:", err);
     }
   };
 
-  // Automated visitor logger triggers
-  const trackVisitorPayload = async () => {
+  const fetchBootstrapStatus = async () => {
     try {
-      const payload = {
-        currentPage: activeTab,
-        referrer: document.referrer || "direct_network",
-        language: navigator.language || "en-US",
-        resolution: `${window.innerWidth}x${window.innerHeight}`,
-      };
+      const res = await fetch("/api/auth/bootstrap-status");
+      if (!res.ok) return;
+      const data = await res.json();
+      setNeedsBootstrap(Boolean(data.needsBootstrap));
+      if (data.senderEmail) setSenderEmail(data.senderEmail);
+      if (data.needsBootstrap) {
+        setBootstrapMode(true);
+      }
+    } catch (err) {
+      console.error("Bootstrap check error:", err);
+    }
+  };
 
-      const res = await fetch("/api/track-visitor", {
+  useEffect(() => {
+    let savedSession = localStorage.getItem("tham_chat_session");
+    if (!savedSession) {
+      savedSession = `sess-${Math.random().toString(36).substring(2, 10)}`;
+      localStorage.setItem("tham_chat_session", savedSession);
+    }
+    setChatSessionId(savedSession);
+
+    // Check active HTTP-only JWT session
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
+
+    fetchCourses();
+    fetchBootstrapStatus();
+
+    // Support direct ?verify=CERT-THAM-... link
+    const params = new URLSearchParams(window.location.search);
+    const verifyParam = params.get("verify");
+    if (verifyParam) {
+      setVerifyingCertId(verifyParam);
+      setActiveTab("verify-cert");
+      fetch(`/api/certificates/verify/${encodeURIComponent(verifyParam)}`)
+        .then((r) => r.json())
+        .then((d) => setCertResult(d))
+        .catch(() => {});
+    }
+
+    // Log visitor analytics
+    const returning = localStorage.getItem("tham_returning") === "true";
+    localStorage.setItem("tham_returning", "true");
+    fetch("/api/tracker/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resolution: `${window.screen.width}x${window.screen.height}`,
+        language: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        referrer: document.referrer || "Direct Entry",
+        currentPage: window.location.pathname,
+        returningVisitor: returning,
+      }),
+    }).catch(() => {});
+  }, []);
+
+  // Username availability debounce
+  useEffect(() => {
+    if (!regUsername || regUsername.length < 3) {
+      setUsernameAvailable(null);
+      setUsernameSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/auth/username-check?username=${encodeURIComponent(regUsername)}`
+        );
+        const data = await res.json();
+        setUsernameAvailable(data.available);
+        setUsernameSuggestions(data.suggestions || []);
+      } catch (err) {
+        console.error(err);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [regUsername]);
+
+  // Super Admin Initial Bootstrap Flow
+  const handleBootstrapRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthNotice(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/bootstrap-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          username: bootstrapForm.username,
+          email: bootstrapForm.email,
+          phone: bootstrapForm.phone,
+          password: bootstrapForm.password,
+        }),
       });
       const data = await res.json();
-      if (data.success) {
-        setVisitorLogs(data.logs);
-      }
-    } catch (err) {
-      console.error("Error logging visitor metrics:", err);
-    }
-  };
-
-  // Keep tracking page updates dynamically
-  useEffect(() => {
-    trackVisitorPayload();
-  }, [activeTab]);
-
-  // Cadet Username Availability Checker
-  const checkUsernameAvailability = async () => {
-    if (!regUsername.trim()) return;
-    setUsernameStatus("checking");
-    setRegSuggestions([]);
-    try {
-      const res = await fetch(`/api/auth/check-username?username=${encodeURIComponent(regUsername)}`);
-      const data = await res.json();
-      if (data.available) {
-        setUsernameStatus("available");
+      if (res.ok && data.success) {
+        setBootstrapChallengeId(data.challengeId);
+        setBootstrapStep(2);
+        setAuthNotice(data.message);
       } else {
-        setUsernameStatus("taken");
-        setRegSuggestions(data.suggestions || []);
+        setAuthError(data.error || "Failed to initiate Super Admin setup.");
       }
-    } catch (err) {
-      setUsernameStatus("idle");
+    } catch {
+      setAuthError("Connection error.");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  // Submit Cadet Registration
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
+  const handleBootstrapConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
-    setRegMsg(null);
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/bootstrap-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: bootstrapChallengeId,
+          otp: bootstrapForm.otp,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.user) {
+        setCurrentUser(data.user);
+        setNeedsBootstrap(false);
+        setBootstrapMode(false);
+        setActiveTab("admin-dashboard");
+      } else {
+        setAuthError(data.error || "Invalid OTP code.");
+      }
+    } catch {
+      setAuthError("Connection error.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Standard Login Step 1 (Password Check -> Dispatches Resend 2FA OTP)
+  const handleLoginStep1 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthNotice(null);
+    setAuthLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/login-step1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAuthError(data.error || "Invalid credentials.");
+      } else if (data.requiresOtp || data.requiresDoubleOtp) {
+        setTempAuthId(data.tempId);
+        setOtpInput("");
+        setAuthNotice(
+          data.simulated
+            ? "Dev Mode (RESEND_API_KEY not set): 6-digit OTP printed to server console."
+            : `6-digit OTP sent from ${senderEmail} to ${loginEmail}.`
+        );
+        setActiveTab("admin-otp");
+      } else if (data.user) {
+        setCurrentUser(data.user);
+        setActiveTab(
+          ADMIN_ROLES.has(data.user.role) ? "admin-dashboard" : "student-portal"
+        );
+      }
+    } catch {
+      setAuthError("Network connection failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Standard Login Step 2 (Verify 6-digit Resend OTP)
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/login-step2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tempId: tempAuthId, otp: otpInput }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.user) {
+        setCurrentUser(data.user);
+        setOtpInput("");
+        setTempAuthId(null);
+        setActiveTab(
+          ADMIN_ROLES.has(data.user.role) ? "admin-dashboard" : "student-portal"
+        );
+      } else {
+        setAuthError(data.error || "Invalid or expired OTP.");
+      }
+    } catch {
+      setAuthError("OTP verification request failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResendLoginOtp = async () => {
+    if (!tempAuthId) return;
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/login-resend-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tempId: tempAuthId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.tempId) {
+        setTempAuthId(data.tempId);
+        setAuthNotice(data.message);
+      } else {
+        setAuthError(data.error || "Could not resend OTP.");
+      }
+    } catch {
+      setAuthError("Network error.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Cadet Registration (2-Step Email OTP via Resend)
+  const handleRegisterRequestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthNotice(null);
+
+    if (regPassword !== regConfirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+    if (usernameAvailable === false) {
+      setAuthError("Please choose an available username.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/register-request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: regUsername,
+          email: regEmail,
+          password: regPassword,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.challengeId) {
+        setRegChallengeId(data.challengeId);
+        setRegStep(2);
+        setAuthNotice(data.message);
+      } else {
+        setAuthError(data.error || "Failed to send verification code.");
+      }
+    } catch {
+      setAuthError("Connection error.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegisterConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setRegSuccess(null);
+    setAuthLoading(true);
+
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -155,125 +413,41 @@ export default function App() {
           username: regUsername,
           email: regEmail,
           phone: regPhone,
+          address: regAddress,
           password: regPassword,
+          challengeId: regChallengeId,
+          otp: regOtpInput,
         }),
       });
       const data = await res.json();
+
       if (res.ok) {
-        setRegMsg(data.message || "🚀 CADET QUEUED: Your registration was submitted successfully!");
+        setRegSuccess(data.message);
+        setRegStep(1);
         setRegUsername("");
         setRegEmail("");
         setRegPhone("");
+        setRegAddress("");
         setRegPassword("");
-        setUsernameStatus("idle");
+        setRegConfirmPassword("");
+        setRegOtpInput("");
       } else {
-        setRegMsg(`❌ Registration Error: ${data.error}`);
+        setAuthError(data.error || "Registration failed.");
       }
-    } catch (err) {
-      setRegMsg("❌ Server connection lost.");
+    } catch {
+      setAuthError("Registration gateway unavailable.");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  // Submit Admin/User Credentials login (STEP 1)
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-    try {
-      const res = await fetch("/api/auth/login-step1", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: loginEmail,
-          password: loginPassword,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        if (data.requiresDoubleOtp) {
-          // Route Admin users to Double-OTP validation terminal (Step 1)
-          setAdminDoubleOtpId(data.tempId);
-          setEnteredEmail(loginEmail);
-          setOtpStep(1);
-          setOtpCode("");
-          setActiveTab("admin-otp");
-        } else {
-          // Student Cadets login directly
-          setCurrentUser(data.user);
-          setActiveTab("student-dashboard");
-        }
-      } else {
-        setLoginError(`❌ Credentials rejection: ${data.error}`);
-      }
-    } catch (err) {
-      setLoginError("❌ Login network failure.");
-    }
-  };
-
-  // Verify OTP and finalize login (Only 1 OTP needed now)
-  const handleVerifyOtp1Submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setOtpError(null);
-    try {
-      const res = await fetch("/api/auth/login-step2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tempId: adminDoubleOtpId,
-          otp: otpCode,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setCurrentUser(data.user);
-        setAdminDoubleOtpId(null);
-        setOtpCode("");
-        setActiveTab("admin-portal");
-      } else {
-        setOtpError(`❌ Code Verification Failed: ${data.error}`);
-      }
-    } catch (err) {
-      setOtpError("❌ Security token payload timeout.");
-    }
-  };
-
-  // Certificate verify search bar gateway
-  const handleCertSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCertSearchError(null);
-    setVerifiedCert(null);
-    const searchVal = searchCertQuery || verifyingCertId;
-    if (!searchVal.trim()) return;
-
-    try {
-      const res = await fetch(`/api/courses/verify-cert/${searchVal}`);
-      const data = await res.json();
-      if (res.ok) {
-        setVerifiedCert(data.certificate);
-      } else {
-        setCertSearchError(`❌ CRYPTOGRAPHIC VERIFICATION FAIL: No cert with serial ID [${searchVal}] exists.`);
-      }
-    } catch (err) {
-      setCertSearchError("❌ Cryptographic signature timeout.");
-    }
-  };
-
-  // Handle click on external cert verification routing
-  useEffect(() => {
-    if (activeTab === "verify-cert" && verifyingCertId) {
-      fetch(`/api/courses/verify-cert/${verifyingCertId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.certificate) setVerifiedCert(data.certificate);
-        })
-        .catch(err => console.error(err));
-    }
-  }, [activeTab, verifyingCertId]);
-
-  // Submit Request Password Reset OTP
+  // Password Reset via Resend OTP
   const handleResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetError(null);
-    setResetSuccessMsg(null);
+    setAuthError(null);
+    setAuthNotice(null);
+    setAuthLoading(true);
+
     try {
       const res = await fetch("/api/auth/reset-password-request", {
         method: "POST",
@@ -281,804 +455,1106 @@ export default function App() {
         body: JSON.stringify({ email: resetEmail }),
       });
       const data = await res.json();
+
       if (res.ok) {
-        setResetSuccessMsg(data.message);
-        setResetStep("otp");
+        setResetTempId(data.tempId);
+        setAuthNotice(data.message);
+        setActiveTab("reset-password-otp");
       } else {
-        setResetError(data.error || "Failed to process request.");
+        setAuthError(data.error || "Account not found.");
       }
-    } catch (err) {
-      setResetError("Failed to request reset OTP. Check backend connectivity.");
+    } catch {
+      setAuthError("Network connection failed.");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  // Submit OTP Code Verification only
-  const handleResetVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setResetError(null);
-    setResetSuccessMsg(null);
-    try {
-      const res = await fetch("/api/auth/reset-password-verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail, otp: resetOtp }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setResetSuccessMsg(data.message);
-        setResetStep("password");
-      } else {
-        setResetError(data.error || "OTP Verification failed.");
-      }
-    } catch (err) {
-      setResetError("Failed to verify reset OTP. Check backend connectivity.");
-    }
-  };
-
-  // Submit Confirm Password Reset with client-side match check
   const handleResetConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetError(null);
-    setResetSuccessMsg(null);
-
-    if (resetNewPassword !== resetConfirmPassword) {
-      setResetError("Passwords do not match. Please verify.");
-      return;
-    }
+    setAuthError(null);
+    setAuthLoading(true);
 
     try {
       const res = await fetch("/api/auth/reset-password-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: resetEmail,
+          tempId: resetTempId,
           otp: resetOtp,
-          newPassword: resetNewPassword,
+          newPassword: newResetPassword,
         }),
       });
       const data = await res.json();
+
       if (res.ok) {
         setResetSuccessMsg(data.message);
-        // Clear form and return to login after 3 seconds
         setTimeout(() => {
-          setResetStep("none");
-          setResetEmail("");
-          setResetOtp("");
-          setResetNewPassword("");
-          setResetConfirmPassword("");
           setResetSuccessMsg(null);
-        }, 3000);
+          setActiveTab("admin-login");
+        }, 2500);
       } else {
-        setResetError(data.error || "Failed to confirm password reset.");
+        setAuthError(data.error || "Invalid OTP code.");
       }
-    } catch (err) {
-      setResetError("Failed to confirm password reset. Check backend connectivity.");
+    } catch {
+      setAuthError("Failed to reset password.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleVerifyCert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyingCertId.trim()) return;
+    setCertChecking(true);
+    setCertResult(null);
+
+    try {
+      const res = await fetch(
+        `/api/certificates/verify/${encodeURIComponent(verifyingCertId.trim())}`
+      );
+      const data = await res.json();
+      setCertResult(data);
+    } catch {
+      setCertResult({ valid: false });
+    } finally {
+      setCertChecking(false);
     }
   };
 
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-    } catch (err) {
-      console.error("Logout failed", err);
-    }
+    } catch {}
     setCurrentUser(null);
-    setAdminDoubleOtpId(null);
-    setOtpCode("");
-    setOtpStep(1);
-    setLoginEmail("");
-    setLoginPassword("");
     setActiveTab("landing");
   };
 
-  return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans relative overflow-hidden" id="tham_root_application">
-      {/* Background Grid Accent */}
-      <div className="absolute inset-0 cyber-grid opacity-[0.4] pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-neutral-200/30 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-neutral-200/30 rounded-full blur-3xl pointer-events-none" />
+  const isUserAdmin = currentUser ? ADMIN_ROLES.has(currentUser.role) : false;
 
-      {/* 1. TOP SECURE NAVIGATION BAR */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/50 px-6 py-4 shadow-[0_1px_15px_rgba(0,0,0,0.02)]" id="secure_navigation_bar">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          {/* Branded Logo */}
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => { setActiveTab("landing"); setSelectedCourse(null); }}>
-            <div className="p-2 bg-neutral-950 rounded-xl text-white group-hover:scale-105 group-hover:bg-indigo-600 transition-all duration-300 shadow-premium">
-              <Shield className="w-5 h-5" />
+  return (
+    <div
+      className="min-h-screen flex flex-col bg-neutral-50 text-neutral-900 font-sans relative overflow-x-hidden"
+      id="tham_enterprise_root"
+    >
+      {/* HEADER */}
+      <header
+        className="sticky top-0 z-40 glass-header border-b border-neutral-200/80 transition-all duration-300"
+        id="main_navigation"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div
+            onClick={() => setActiveTab("landing")}
+            className="flex items-center gap-3 cursor-pointer group"
+          >
+            <div className="w-9 h-9 rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-sm flex items-center justify-center">
+              <img
+                src={thamLogo}
+                alt="THAMJJ13 Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
-              <span className="font-display font-bold text-[15px] text-neutral-950 tracking-wider group-hover:text-indigo-600 transition-colors">THAMJJ13</span>
-              <p className="text-[8px] text-neutral-400 font-mono tracking-widest font-bold">WHITE HAT GUILD • SG/BD</p>
+              <span className="font-display font-bold text-lg tracking-wider text-neutral-900">
+                THAMJJ13
+              </span>
+              <span className="hidden sm:block text-[9px] font-mono text-neutral-400 tracking-widest -mt-1">
+                SINGAPORE OPS CENTRAL
+              </span>
             </div>
           </div>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1.5 bg-neutral-100/60 p-1 rounded-full border border-neutral-200/40">
-            <button 
-              onClick={() => { setActiveTab("landing"); setSelectedCourse(null); }}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer ${activeTab === "landing" ? "bg-neutral-950 text-white shadow-premium font-bold" : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"}`}
+          <nav className="hidden md:flex items-center gap-6">
+            <button
+              onClick={() => setActiveTab("landing")}
+              className={`text-xs font-medium tracking-wide transition cursor-pointer ${
+                activeTab === "landing"
+                  ? "text-neutral-950 font-semibold"
+                  : "text-neutral-500 hover:text-neutral-900"
+              }`}
             >
               Operations Home
             </button>
-            <button 
-              onClick={() => { setActiveTab("courses"); setSelectedCourse(null); }}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer ${activeTab === "courses" ? "bg-neutral-950 text-white shadow-premium font-bold" : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"}`}
+            <button
+              onClick={() => setActiveTab("courses")}
+              className={`text-xs font-medium tracking-wide flex items-center gap-1.5 transition cursor-pointer ${
+                activeTab === "courses"
+                  ? "text-neutral-950 font-semibold"
+                  : "text-neutral-500 hover:text-neutral-900"
+              }`}
             >
-              Academy
+              <BookOpen className="w-3.5 h-3.5" /> Academy
             </button>
-            <button 
-              onClick={() => { setActiveTab("verify-cert"); setVerifiedCert(null); setCertSearchError(null); }}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer ${activeTab === "verify-cert" ? "bg-neutral-950 text-white shadow-premium font-bold" : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"}`}
+            <button
+              onClick={() => setActiveTab("verify-cert")}
+              className={`text-xs font-medium tracking-wide flex items-center gap-1.5 transition cursor-pointer ${
+                activeTab === "verify-cert"
+                  ? "text-neutral-950 font-semibold"
+                  : "text-neutral-500 hover:text-neutral-900"
+              }`}
             >
-              Verification Gate
+              <Award className="w-3.5 h-3.5" /> Verification Gate
             </button>
-            
-            {/* Conditional dashboards routing */}
+
+            <div className="h-4 w-[1px] bg-neutral-200 mx-1" />
+
             {currentUser ? (
-              currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SECONDARY_ADMIN ? (
-                <button 
-                  onClick={() => setActiveTab("admin-portal")}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold text-neutral-950 transition-all duration-300 cursor-pointer ${activeTab === "admin-portal" ? "bg-white shadow-sm" : "text-neutral-600 hover:bg-white/40"}`}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() =>
+                    setActiveTab(
+                      isUserAdmin ? "admin-dashboard" : "student-portal"
+                    )
+                  }
+                  className="px-3.5 py-1.5 rounded-lg bg-neutral-900 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-neutral-800 transition shadow-sm cursor-pointer"
                 >
-                  Admin Console
+                  <User className="w-3.5 h-3.5" />
+                  <span>{currentUser.username}</span>
                 </button>
-              ) : (
-                <button 
-                  onClick={() => setActiveTab("student-dashboard")}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold text-neutral-950 transition-all duration-300 cursor-pointer ${activeTab === "student-dashboard" ? "bg-white shadow-sm" : "text-neutral-600 hover:bg-white/40"}`}
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 text-neutral-400 hover:text-red-600 transition cursor-pointer"
+                  title="Sign Out"
                 >
-                  Cadet Dashboard
+                  <LogOut className="w-4 h-4" />
                 </button>
-              )
+              </div>
             ) : (
-              <>
-                <button 
-                  onClick={() => setActiveTab("register-cadet")}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer ${activeTab === "register-cadet" ? "bg-neutral-950 text-white shadow-premium font-bold" : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"}`}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setAuthError(null);
+                    setAuthNotice(null);
+                    setActiveTab("register");
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg border border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-medium transition cursor-pointer"
                 >
                   Cadet Enlist
                 </button>
-                <button 
-                  onClick={() => setActiveTab("admin-login")}
-                  className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all duration-300 cursor-pointer ${activeTab === "admin-login" ? "bg-neutral-950 text-white shadow-premium font-bold" : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"}`}
+                <button
+                  onClick={() => {
+                    setAuthError(null);
+                    setAuthNotice(null);
+                    setActiveTab("admin-login");
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
-                  Portal Login
+                  <Lock className="w-3 h-3" /> Portal Login
                 </button>
-              </>
+              </div>
             )}
           </nav>
 
-          {/* Right Action Widgets */}
-          <div className="flex items-center gap-3">
-            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-white border border-neutral-200 rounded-full text-[9px] font-mono text-neutral-600 shadow-sm">
-              <span className="w-1.5 h-1.5 bg-neutral-900 rounded-full animate-ping" />
-              <span>SINGAPORE SLA • BANGLADESH EDGE</span>
-            </div>
-
-            {/* Mobile Hamburger Menu icon */}
-            <button 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 rounded-lg md:hidden cursor-pointer"
-            >
-              {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            </button>
-          </div>
+          <button
+            className="md:hidden text-neutral-600 p-2 cursor-pointer"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? (
+              <X className="w-6 h-6" />
+            ) : (
+              <Menu className="w-6 h-6" />
+            )}
+          </button>
         </div>
 
-        {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden mt-3 pt-3 border-t border-neutral-200 space-y-2 flex flex-col text-xs font-medium text-neutral-700">
-            <button 
-              onClick={() => { setActiveTab("landing"); setSelectedCourse(null); setMobileMenuOpen(false); }}
-              className="w-full text-left py-2 px-3 rounded-lg hover:bg-neutral-100 text-neutral-800"
+          <div className="md:hidden bg-white border-b border-neutral-200 px-6 py-4 space-y-3">
+            <button
+              onClick={() => {
+                setActiveTab("landing");
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full text-left py-2 text-sm text-neutral-700 font-medium"
             >
               Operations Home
             </button>
-            <button 
-              onClick={() => { setActiveTab("courses"); setSelectedCourse(null); setMobileMenuOpen(false); }}
-              className="w-full text-left py-2 px-3 rounded-lg hover:bg-neutral-100 text-neutral-800"
+            <button
+              onClick={() => {
+                setActiveTab("courses");
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full text-left py-2 text-sm text-neutral-700 font-medium"
             >
               Academy
             </button>
-            <button 
-              onClick={() => { setActiveTab("verify-cert"); setVerifiedCert(null); setCertSearchError(null); setMobileMenuOpen(false); }}
-              className="w-full text-left py-2 px-3 rounded-lg hover:bg-neutral-100 text-neutral-800"
+            <button
+              onClick={() => {
+                setActiveTab("verify-cert");
+                setMobileMenuOpen(false);
+              }}
+              className="block w-full text-left py-2 text-sm text-neutral-700 font-medium"
             >
               Verification Gate
             </button>
-            
             {currentUser ? (
-              currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.SECONDARY_ADMIN ? (
-                <button 
-                  onClick={() => { setActiveTab("admin-portal"); setMobileMenuOpen(false); }}
-                  className="w-full text-left py-2 px-3 rounded-lg text-neutral-900 font-bold hover:bg-neutral-100"
-                >
-                  Admin Console
-                </button>
-              ) : (
-                <button 
-                  onClick={() => { setActiveTab("student-dashboard"); setMobileMenuOpen(false); }}
-                  className="w-full text-left py-2 px-3 rounded-lg text-neutral-900 font-bold hover:bg-neutral-100"
-                >
-                  Cadet Dashboard
-                </button>
-              )
-            ) : (
               <>
-                <button 
-                  onClick={() => { setActiveTab("register-cadet"); setMobileMenuOpen(false); }}
-                  className="w-full text-left py-2 px-3 rounded-lg hover:bg-neutral-100 text-neutral-800"
+                <button
+                  onClick={() => {
+                    setActiveTab(
+                      isUserAdmin ? "admin-dashboard" : "student-portal"
+                    );
+                    setMobileMenuOpen(false);
+                  }}
+                  className="block w-full text-left py-2 text-sm text-neutral-900 font-bold"
+                >
+                  Open Dashboard ({currentUser.username})
+                </button>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="block w-full text-left py-2 text-sm text-red-600"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setActiveTab("register");
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full py-2.5 text-center rounded-xl border border-neutral-200 text-neutral-800 text-xs font-bold"
                 >
                   Cadet Enlist
                 </button>
-                <button 
-                  onClick={() => { setActiveTab("admin-login"); setMobileMenuOpen(false); }}
-                  className="w-full text-left py-2 px-3 rounded-lg bg-neutral-900 text-white font-medium"
+                <button
+                  onClick={() => {
+                    setActiveTab("admin-login");
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full py-2.5 text-center rounded-xl bg-neutral-900 text-white text-xs font-bold"
                 >
                   Portal Login
                 </button>
-              </>
+              </div>
             )}
           </div>
         )}
       </header>
 
-      {/* 2. MAIN APPLICATION WORKSPACE VIEWPORTS */}
-      <main className="relative z-10 min-h-[80vh] py-8">
-        {activeTab === "landing" && (
-          <LandingPage 
-            courses={courses} 
-            onNavigate={setActiveTab} 
-            onSelectCourse={setSelectedCourse} 
-          />
-        )}
+      {/* MAIN VIEW */}
+      <main className="flex-1">
+        <AnimatePresence mode="wait">
+          {activeTab === "landing" && (
+            <motion.div
+              key="landing"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <LandingPage
+                courses={courses}
+                onNavigate={setActiveTab}
+                onSelectCourse={(c) => {
+                  setSelectedCourse(c);
+                  setActiveTab("courses");
+                }}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === "courses" && (
-          <CourseSystem
-            courses={courses}
-            selectedCourse={selectedCourse}
-            setSelectedCourse={setSelectedCourse}
-            currentUser={currentUser}
-            onNavigate={setActiveTab}
-            setVerifyingCertId={setVerifyingCertId}
-          />
-        )}
+          {activeTab === "courses" && (
+            <motion.div
+              key="courses"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <CourseSystem
+                courses={courses}
+                selectedCourse={selectedCourse}
+                setSelectedCourse={setSelectedCourse}
+                currentUser={currentUser}
+                onNavigate={setActiveTab}
+                setVerifyingCertId={(id) => {
+                  setVerifyingCertId(id);
+                  setActiveTab("verify-cert");
+                }}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === "admin-portal" && (
-          <AdminPortal
-            currentUser={currentUser}
-            onLogout={handleLogout}
-            onNavigate={setActiveTab}
-            visitorLogs={visitorLogs}
-          />
-        )}
+          {activeTab === "admin-dashboard" && isUserAdmin && currentUser && (
+            <motion.div
+              key="admin-dashboard"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <AdminPortal
+                currentUser={currentUser}
+                onRefreshCourses={fetchCourses}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === "student-dashboard" && (
-          <StudentPortal
-            currentUser={currentUser}
-            onLogout={handleLogout}
-            onNavigate={setActiveTab}
-          />
-        )}
+          {activeTab === "student-portal" && currentUser && (
+            <motion.div
+              key="student-portal"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <StudentPortal
+                currentUser={currentUser}
+                courses={courses}
+                onSelectCourse={(c) => {
+                  setSelectedCourse(c);
+                  setActiveTab("courses");
+                }}
+                onNavigate={setActiveTab}
+              />
+            </motion.div>
+          )}
 
-        {/* CADET REGISTRATION GATEWAY */}
-        {activeTab === "register-cadet" && (
-          <div className="max-w-md mx-auto px-4 py-12 animate-fadeIn" id="cadet_registration_page">
-            <div className="bg-white p-8 rounded-3xl border border-neutral-200/80 shadow-xl space-y-6">
-              <div className="text-center space-y-2">
-                <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center mx-auto text-neutral-900 shadow-inner">
-                  <UserPlus className="w-5 h-5" />
-                </div>
-                <h2 className="font-display font-bold text-2xl text-neutral-900">Cadet Enlistment Queue</h2>
-                <p className="text-xs text-neutral-500 max-w-sm mx-auto">Register a verified student cadet node. The operations board will inspect credentials before approving.</p>
-              </div>
-
-              {regMsg && (
-                <div className={`p-4 rounded-2xl border text-xs leading-relaxed font-mono ${regMsg.includes("❌") ? "bg-red-50 border-red-200 text-red-800" : "bg-neutral-50 border-neutral-200 text-neutral-800"}`}>
-                  {regMsg}
+          {/* PORTAL LOGIN & ONE-TIME SUPER ADMIN BOOTSTRAP */}
+          {activeTab === "admin-login" && (
+            <motion.div
+              key="admin-login"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-md mx-auto my-14 px-4 space-y-4"
+            >
+              {needsBootstrap && (
+                <div className="flex bg-neutral-200/70 p-1 rounded-2xl text-xs font-mono">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBootstrapMode(true);
+                      setAuthError(null);
+                      setAuthNotice(null);
+                    }}
+                    className={`flex-1 py-2 rounded-xl font-bold cursor-pointer ${
+                      bootstrapMode ? "bg-neutral-900 text-white" : "text-neutral-600"
+                    }`}
+                  >
+                    1st-Time Super Admin Setup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBootstrapMode(false);
+                      setAuthError(null);
+                      setAuthNotice(null);
+                    }}
+                    className={`flex-1 py-2 rounded-xl font-bold cursor-pointer ${
+                      !bootstrapMode ? "bg-neutral-900 text-white" : "text-neutral-600"
+                    }`}
+                  >
+                    Standard Login
+                  </button>
                 </div>
               )}
 
-              <form onSubmit={handleRegisterSubmit} className="space-y-4 text-xs">
-                {/* Username live checker */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] text-neutral-500 font-mono tracking-wider">CADET USERNAME</label>
-                    <button
-                      type="button"
-                      onClick={checkUsernameAvailability}
-                      disabled={!regUsername.trim()}
-                      className="text-[10px] text-neutral-900 font-bold hover:underline cursor-pointer"
-                    >
-                      Check Availability
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={regUsername}
-                      onChange={e => { setRegUsername(e.target.value); setUsernameStatus("idle"); }}
-                      placeholder="e.g. ethical_cadet_sg"
-                      className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                    />
-                    {usernameStatus === "checking" && <span className="absolute right-3 top-3.5 text-[9px] font-mono text-neutral-500 animate-pulse">Checking...</span>}
-                    {usernameStatus === "available" && <span className="absolute right-3 top-3.5 text-[9px] font-mono text-neutral-900 flex items-center gap-1 font-bold"><Check className="w-3.5 h-3.5" /> Available</span>}
-                    {usernameStatus === "taken" && <span className="absolute right-3 top-3.5 text-[9px] font-mono text-red-600 font-bold">Already Enlisted</span>}
-                  </div>
-
-                  {/* alternative suggestions */}
-                  {regSuggestions.length > 0 && (
-                    <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl space-y-1.5">
-                      <p className="text-[9px] text-neutral-500 font-mono">AVAILABLE REPLACEMENT HANDLES:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {regSuggestions.map(sug => (
-                          <button
-                            key={sug}
-                            type="button"
-                            onClick={() => { setRegUsername(sug); setUsernameStatus("available"); setRegSuggestions([]); }}
-                            className="px-2 py-1 bg-white hover:bg-neutral-100 border border-neutral-200 text-[10px] text-neutral-800 rounded-lg font-mono transition"
-                          >
-                            {sug}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 font-mono tracking-wider">SECURE EMAIL</label>
-                  <input
-                    type="email"
-                    required
-                    value={regEmail}
-                    onChange={e => setRegEmail(e.target.value)}
-                    placeholder="name@gmail.com"
-                    className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 font-mono tracking-wider">CONTACT NUMBER</label>
-                  <input
-                    type="tel"
-                    required
-                    value={regPhone}
-                    onChange={e => setRegPhone(e.target.value)}
-                    placeholder="e.g. 09638233943"
-                    className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 font-mono tracking-wider">CIPHER KEY PASSWORD</label>
-                  <input
-                    type="password"
-                    required
-                    value={regPassword}
-                    onChange={e => setRegPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold tracking-wider transition shadow-sm cursor-pointer mt-2"
-                >
-                  TRANSMIT ENLISTMENT
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* LOG IN / SECURABLE PORTAL ENTRANCE */}
-        {activeTab === "admin-login" && (
-          <div className="max-w-md mx-auto px-4 py-12 animate-fadeIn" id="auth_login_page">
-            <div className="bg-white p-8 rounded-3xl border border-neutral-200/80 shadow-xl space-y-6">
-              
-              {resetStep === "request" && (
-                <div className="space-y-4">
+              {needsBootstrap && bootstrapMode ? (
+                <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
                   <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                      <Mail className="w-5 h-5 animate-pulse" />
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-950 flex items-center justify-center mx-auto text-amber-400">
+                      <Crown className="w-6 h-6" />
                     </div>
-                    <h2 className="font-display font-bold text-2xl text-neutral-900">Reset Cipher Pass</h2>
-                    <p className="text-xs text-neutral-500">Provide your registered secure email to receive a password reset OTP sequence.</p>
+                    <h2 className="font-display font-bold text-2xl text-neutral-900">
+                      Initialize Super Admin
+                    </h2>
+                    <p className="text-xs text-neutral-500">
+                      No Super Administrator exists in Turso yet. Verify your email via{" "}
+                      <strong>{senderEmail}</strong> to claim root command.
+                    </p>
                   </div>
 
-                  {resetError && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl">
-                      {resetError}
+                  {authError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
+                      {authError}
+                    </div>
+                  )}
+                  {authNotice && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-mono">
+                      {authNotice}
                     </div>
                   )}
 
-                  <form onSubmit={handleResetRequest} className="space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-500 font-mono tracking-wider">REGISTERED SECURE EMAIL</label>
+                  {bootstrapStep === 1 ? (
+                    <form onSubmit={handleBootstrapRequest} className="space-y-3.5 text-xs">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Super Admin Callsign / Name *"
+                        value={bootstrapForm.username}
+                        onChange={(e) =>
+                          setBootstrapForm({
+                            ...bootstrapForm,
+                            username: e.target.value,
+                          })
+                        }
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3"
+                      />
                       <input
                         type="email"
                         required
-                        value={resetEmail}
-                        onChange={e => setResetEmail(e.target.value)}
-                        placeholder="e.g. thamjj13@gmail.com"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
+                        placeholder="Official Admin Email *"
+                        value={bootstrapForm.email}
+                        onChange={(e) =>
+                          setBootstrapForm({
+                            ...bootstrapForm,
+                            email: e.target.value,
+                          })
+                        }
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3"
                       />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold tracking-wider transition shadow-sm cursor-pointer"
-                    >
-                      DISPATCH SECURE RESET OTP
-                    </button>
-                  </form>
-
-                  <div className="text-center pt-2">
-                    <button 
-                      type="button"
-                      onClick={() => setResetStep("none")}
-                      className="text-xs text-neutral-500 hover:text-neutral-900 underline"
-                    >
-                      ← Return to Secure Guild Gate
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {resetStep === "otp" && (
-                <div className="space-y-4">
-                  <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                      <Key className="w-5 h-5" />
-                    </div>
-                    <h2 className="font-display font-bold text-2xl text-neutral-900">Verify OTP Token</h2>
-                    <p className="text-xs text-neutral-500">Enter the cryptographic OTP code sent to your email to verify your identity.</p>
-                  </div>
-
-                  {resetSuccessMsg && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-800 rounded-xl">
-                      {resetSuccessMsg}
-                    </div>
-                  )}
-
-                  {resetError && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl">
-                      {resetError}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleResetVerifyOtp} className="space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-500 font-mono tracking-wider">6-DIGIT OTP SEQUENCE</label>
+                      <input
+                        type="tel"
+                        placeholder="Direct Phone"
+                        value={bootstrapForm.phone}
+                        onChange={(e) =>
+                          setBootstrapForm({
+                            ...bootstrapForm,
+                            phone: e.target.value,
+                          })
+                        }
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3"
+                      />
+                      <input
+                        type="password"
+                        required
+                        minLength={8}
+                        placeholder="Master Password (min 8 chars) *"
+                        value={bootstrapForm.password}
+                        onChange={(e) =>
+                          setBootstrapForm({
+                            ...bootstrapForm,
+                            password: e.target.value,
+                          })
+                        }
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3"
+                      />
+                      <button
+                        type="submit"
+                        disabled={authLoading}
+                        className="w-full py-3 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl cursor-pointer"
+                      >
+                        {authLoading
+                          ? "Sending OTP via Resend..."
+                          : "Send Verification OTP"}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleBootstrapConfirm} className="space-y-4 text-xs">
                       <input
                         type="text"
                         required
                         maxLength={6}
-                        value={resetOtp}
-                        onChange={e => setResetOtp(e.target.value)}
-                        placeholder="e.g. 123456"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 font-mono tracking-widest text-center text-lg focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
+                        placeholder="000000"
+                        value={bootstrapForm.otp}
+                        onChange={(e) =>
+                          setBootstrapForm({
+                            ...bootstrapForm,
+                            otp: e.target.value,
+                          })
+                        }
+                        className="w-full text-center font-mono text-2xl tracking-[0.4em] bg-neutral-50 border border-neutral-200 rounded-xl py-3.5"
                       />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold tracking-wider transition shadow-sm cursor-pointer"
-                    >
-                      VERIFY CODE & PROCEED
-                    </button>
-                  </form>
-
-                  <div className="text-center pt-2">
-                    <button 
-                      type="button"
-                      onClick={() => { setResetStep("request"); setResetError(null); setResetSuccessMsg(null); }}
-                      className="text-xs text-neutral-500 hover:text-neutral-900 underline"
-                    >
-                      ← Didn't receive code? Re-request
-                    </button>
-                  </div>
+                      <button
+                        type="submit"
+                        disabled={authLoading}
+                        className="w-full py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl cursor-pointer"
+                      >
+                        {authLoading
+                          ? "Provisioning Root Node..."
+                          : "Confirm OTP & Launch Admin Console"}
+                      </button>
+                    </form>
+                  )}
                 </div>
-              )}
-
-              {resetStep === "password" && (
-                <div className="space-y-4">
+              ) : (
+                <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
                   <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                      <LockIcon className="w-5 h-5 animate-pulse" />
+                    <div className="w-12 h-12 rounded-2xl bg-neutral-100 border border-neutral-200 flex items-center justify-center mx-auto text-neutral-900">
+                      <Lock className="w-6 h-6" />
                     </div>
-                    <h2 className="font-display font-bold text-2xl text-neutral-900">Define New Cipher</h2>
-                    <p className="text-xs text-neutral-500">Select and confirm your new secure node password sequence.</p>
+                    <h2 className="font-display font-bold text-2xl text-neutral-900">
+                      Portal Sign In
+                    </h2>
+                    <p className="text-xs text-neutral-500">
+                      Admin &amp; Cadet authentication secured by Turso + Resend 2FA OTP (
+                      <span className="font-mono">{senderEmail}</span>).
+                    </p>
                   </div>
 
-                  {resetSuccessMsg && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-800 rounded-xl">
-                      {resetSuccessMsg}
+                  {authError && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                      <XCircle className="w-4 h-4 shrink-0" />
+                      <span>{authError}</span>
                     </div>
                   )}
 
-                  {resetError && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl">
-                      {resetError}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleResetConfirm} className="space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-500 font-mono tracking-wider">NEW NODE CIPHER PASS</label>
-                      <input
-                        type="password"
-                        required
-                        value={resetNewPassword}
-                        onChange={e => setResetNewPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-500 font-mono tracking-wider">CONFIRM NEW NODE CIPHER PASS</label>
-                      <input
-                        type="password"
-                        required
-                        value={resetConfirmPassword}
-                        onChange={e => setResetConfirmPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold tracking-wider transition shadow-sm cursor-pointer"
-                    >
-                      COMMIT NEW PASSWORD
-                    </button>
-                  </form>
-
-                  <div className="text-center pt-2">
-                    <button 
-                      type="button"
-                      onClick={() => { setResetStep("none"); setResetError(null); setResetSuccessMsg(null); }}
-                      className="text-xs text-neutral-500 hover:text-neutral-900 underline"
-                    >
-                      ← Return to Secure Guild Gate
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {resetStep === "none" && (
-                <>
-                  <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center mx-auto text-neutral-900 shadow-inner">
-                      <LockIcon className="w-5 h-5" />
-                    </div>
-                    <h2 className="font-display font-bold text-2xl text-neutral-900">Secure Guild Gate</h2>
-                    <p className="text-xs text-neutral-500">Sign in to your authorized white hat cadet or admin workspace.</p>
-                  </div>
-
-                  {loginError && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl">
-                      {loginError}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-neutral-500 font-mono tracking-wider">REGISTERED SECURE EMAIL</label>
+                  <form onSubmit={handleLoginStep1} className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 mb-1.5 uppercase">
+                        Email Address
+                      </label>
                       <input
                         type="email"
                         required
                         value={loginEmail}
-                        onChange={e => setLoginEmail(e.target.value)}
-                        placeholder="e.g. thamjj13@gmail.com"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="officer@thamjj13.top"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm text-neutral-900 focus:outline-none focus:bg-white"
                       />
                     </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] text-neutral-500 font-mono tracking-wider">NODE CIPHER PASS</label>
-                        <button 
-                          type="button"
-                          onClick={() => { setResetStep("request"); setResetError(null); setResetSuccessMsg(null); }}
-                          className="text-[10px] text-indigo-600 hover:underline font-bold"
-                        >
-                          Forgot Password?
-                        </button>
-                      </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 mb-1.5 uppercase">
+                        Password
+                      </label>
                       <input
                         type="password"
                         required
                         value={loginPassword}
-                        onChange={e => setLoginPassword(e.target.value)}
+                        onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full bg-neutral-50 border border-neutral-200/80 rounded-xl px-4 py-3 text-neutral-900 focus:ring-1 focus:ring-neutral-400 focus:outline-none transition"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm text-neutral-900 focus:outline-none focus:bg-white"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm transition shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      {authLoading
+                        ? "Verifying & Dispatching OTP..."
+                        : "Continue with 2FA OTP"}
+                    </button>
+                  </form>
+
+                  <div className="text-center pt-2 border-t border-neutral-100 flex justify-between items-center text-xs text-neutral-500">
+                    <button
+                      onClick={() => {
+                        setAuthError(null);
+                        setActiveTab("forgot-password");
+                      }}
+                      className="text-neutral-700 font-semibold hover:underline cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAuthError(null);
+                        setActiveTab("register");
+                      }}
+                      className="text-neutral-900 font-semibold hover:underline cursor-pointer"
+                    >
+                      Cadet Enlistment →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* STEP 2: 2FA OTP VERIFICATION */}
+          {activeTab === "admin-otp" && (
+            <motion.div
+              key="admin-otp"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-md mx-auto my-16 px-4"
+            >
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-900 flex items-center justify-center mx-auto text-white">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <h2 className="font-display font-bold text-2xl text-neutral-900">
+                    Email OTP Verification
+                  </h2>
+                  <p className="text-xs text-neutral-500">
+                    Enter the 6-digit verification code sent from{" "}
+                    <strong>{senderEmail}</strong> to <strong>{loginEmail}</strong>.
+                  </p>
+                </div>
+
+                {authNotice && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono">
+                    {authNotice}
+                  </div>
+                )}
+
+                {authError && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                    <XCircle className="w-4 h-4 shrink-0" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    placeholder="000000"
+                    className="w-full text-center tracking-[0.5em] font-mono text-2xl bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3.5 text-neutral-900 focus:outline-none focus:bg-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm transition cursor-pointer"
+                  >
+                    {authLoading ? "Verifying Code..." : "Verify OTP & Enter Portal"}
+                  </button>
+                </form>
+
+                <div className="flex justify-between items-center text-xs pt-2 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("admin-login")}
+                    className="text-neutral-500 hover:text-neutral-900 cursor-pointer"
+                  >
+                    ← Back to Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResendLoginOtp}
+                    disabled={authLoading}
+                    className="font-mono font-bold text-indigo-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Resend OTP
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* FORGOT PASSWORD */}
+          {activeTab === "forgot-password" && (
+            <motion.div
+              key="forgot-password"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-md mx-auto my-16 px-4"
+            >
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 border border-neutral-200 flex items-center justify-center mx-auto text-neutral-900">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <h2 className="font-display font-bold text-2xl text-neutral-900">
+                    Password Recovery
+                  </h2>
+                  <p className="text-xs text-neutral-500">
+                    Receive a 6-digit recovery OTP from{" "}
+                    <strong>{senderEmail}</strong>.
+                  </p>
+                </div>
+
+                {authError && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleResetRequest} className="space-y-4">
+                  <input
+                    type="email"
+                    required
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Enter your registered email"
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm text-neutral-900 focus:outline-none focus:bg-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm cursor-pointer"
+                  >
+                    {authLoading ? "Sending Recovery OTP..." : "Send Recovery OTP"}
+                  </button>
+                </form>
+
+                <div className="text-center text-xs">
+                  <button
+                    onClick={() => setActiveTab("admin-login")}
+                    className="text-neutral-600 hover:underline cursor-pointer"
+                  >
+                    ← Return to Sign In
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* RESET PASSWORD OTP CONFIRM */}
+          {activeTab === "reset-password-otp" && (
+            <motion.div
+              key="reset-password-otp"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-md mx-auto my-16 px-4"
+            >
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
+                <h2 className="font-display font-bold text-2xl text-neutral-900 text-center">
+                  Set New Password
+                </h2>
+
+                {resetSuccessMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
+                    {resetSuccessMsg}
+                  </div>
+                )}
+                {authError && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleResetConfirm} className="space-y-4">
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={resetOtp}
+                    onChange={(e) => setResetOtp(e.target.value)}
+                    placeholder="000000"
+                    className="w-full text-center tracking-[0.4em] font-mono text-xl bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3"
+                  />
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newResetPassword}
+                    onChange={(e) => setNewResetPassword(e.target.value)}
+                    placeholder="New Password"
+                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm cursor-pointer"
+                  >
+                    {authLoading ? "Updating Password..." : "Confirm Password Reset"}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
+          {/* CADET REGISTRATION + EMAIL OTP VERIFICATION */}
+          {activeTab === "register" && (
+            <motion.div
+              key="register"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="max-w-md mx-auto my-12 px-4"
+            >
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 border border-neutral-200 flex items-center justify-center mx-auto text-neutral-900">
+                    <UserCheck className="w-6 h-6" />
+                  </div>
+                  <h2 className="font-display font-bold text-2xl text-neutral-900">
+                    Cadet Enlistment
+                  </h2>
+                  <p className="text-xs text-neutral-500">
+                    Verify your email via Resend (<span className="font-mono">{senderEmail}</span>) to register in Turso.
+                  </p>
+                </div>
+
+                {regSuccess && (
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <CheckCircle2 className="w-4 h-4" /> Enlistment Verified
+                    </div>
+                    <p>{regSuccess}</p>
+                  </div>
+                )}
+
+                {authNotice && (
+                  <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-mono">
+                    {authNotice}
+                  </div>
+                )}
+
+                {authError && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                    {authError}
+                  </div>
+                )}
+
+                {regStep === 1 ? (
+                  <form onSubmit={handleRegisterRequestOtp} className="space-y-3.5">
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 mb-1 uppercase">
+                        Username / Callsign *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={regUsername}
+                        onChange={(e) => setRegUsername(e.target.value)}
+                        placeholder="cyber_cadet"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm"
+                      />
+                      {usernameAvailable === true && (
+                        <p className="text-[11px] text-emerald-600 mt-1 font-mono">
+                          ✓ Callsign available
+                        </p>
+                      )}
+                      {usernameAvailable === false && (
+                        <div className="mt-1 space-y-1">
+                          <p className="text-[11px] text-red-600 font-mono">
+                            ✗ Callsign taken. Suggestions:
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {usernameSuggestions.map((s) => (
+                              <button
+                                type="button"
+                                key={s}
+                                onClick={() => setRegUsername(s)}
+                                className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 cursor-pointer"
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 mb-1 uppercase">
+                        Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        placeholder="cadet@domain.com"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input
+                        type="tel"
+                        required
+                        value={regPhone}
+                        onChange={(e) => setRegPhone(e.target.value)}
+                        placeholder="Phone Number *"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                      <input
+                        type="text"
+                        required
+                        value={regAddress}
+                        onChange={(e) => setRegAddress(e.target.value)}
+                        placeholder="City / Country *"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        placeholder="Password *"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={regConfirmPassword}
+                        onChange={(e) => setRegConfirmPassword(e.target.value)}
+                        placeholder="Confirm Password *"
+                        className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm"
                       />
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-3.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold tracking-wider transition shadow-sm cursor-pointer mt-2"
+                      disabled={authLoading}
+                      className="w-full py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm transition cursor-pointer"
                     >
-                      ESTABLISH CRYPTO LINK
+                      {authLoading
+                        ? "Sending Verification OTP..."
+                        : "Send Email Verification OTP"}
                     </button>
                   </form>
-
-                  <div className="pt-4 border-t border-neutral-100 text-center space-y-3.5">
-                    <p className="text-[10px] text-neutral-500 leading-relaxed bg-neutral-50 p-3 rounded-xl border border-neutral-100">
-                      ⚠️ <strong>Admin Notice:</strong> If the platform database is fresh, enlist as a Cadet first to automatically bootstrap yourself as the Super Administrator.
+                ) : (
+                  <form onSubmit={handleRegisterConfirm} className="space-y-4">
+                    <p className="text-xs text-neutral-600 text-center">
+                      Enter the 6-digit verification code sent to{" "}
+                      <strong>{regEmail}</strong>:
                     </p>
-                    <button 
-                      onClick={() => setActiveTab("register-cadet")} 
-                      className="text-xs text-neutral-900 font-bold hover:underline cursor-pointer"
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={regOtpInput}
+                      onChange={(e) => setRegOtpInput(e.target.value)}
+                      placeholder="000000"
+                      className="w-full text-center tracking-[0.5em] font-mono text-2xl bg-neutral-50 border border-neutral-200 rounded-xl py-3.5"
+                    />
+                    <button
+                      type="submit"
+                      disabled={authLoading}
+                      className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-sm cursor-pointer"
                     >
-                      Request Cadet Registration instead →
+                      {authLoading
+                        ? "Completing Enlistment..."
+                        : "Verify OTP & Complete Enlistment"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setRegStep(1)}
+                      className="w-full text-xs text-neutral-500 hover:text-neutral-900 cursor-pointer"
+                    >
+                      ← Edit Registration Details
+                    </button>
+                  </form>
+                )}
+
+                <div className="text-center pt-2 border-t border-neutral-100">
+                  <p className="text-xs text-neutral-500">
+                    Already approved?{" "}
+                    <button
+                      onClick={() => setActiveTab("admin-login")}
+                      className="text-neutral-900 font-semibold hover:underline cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* PUBLIC CERTIFICATE VERIFICATION */}
+          {activeTab === "verify-cert" && (
+            <motion.div
+              key="verify-cert"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+              className="max-w-xl mx-auto my-16 px-4"
+            >
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200 shadow-luxury space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 border border-neutral-200 flex items-center justify-center mx-auto text-neutral-900">
+                    <Award className="w-6 h-6" />
                   </div>
-                </>
-              )}
-
-            </div>
-          </div>
-        )}
-
-        {/* SECURE OTP VERIFICATION TERMINAL (SINGLE-STEP SECURE SEQUENCER) */}
-        {activeTab === "admin-otp" && (
-          <div className="max-w-md mx-auto px-4 py-12 animate-fadeIn" id="auth_otp_page">
-            <div className="bg-white p-8 rounded-3xl border border-neutral-200 shadow-xl space-y-6 relative">
-              <div className="text-center space-y-2">
-                <div className="w-12 h-12 bg-neutral-900 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
-                  <Globe className="w-5 h-5 animate-spin [animation-duration:12s]" />
+                  <h2 className="font-display font-bold text-2xl text-neutral-900">
+                    Credential Verification Gate
+                  </h2>
+                  <p className="text-xs text-neutral-500">
+                    Verify authenticity of THAMJJ13 Academy certificates against Turso.
+                  </p>
                 </div>
-                <h2 className="font-display font-bold text-2xl text-neutral-900">Multi-Factor Gateway</h2>
-                <p className="text-xs text-neutral-500">
-                  Check your registered inbox for the cryptographic secure OTP sequence.
-                </p>
-              </div>
 
-              {/* Status Tracker */}
-              <div className="flex items-center justify-between px-2 text-[10px] font-mono text-neutral-500">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-neutral-900">TARGET EMAIL:</span>
-                  <span>{enteredEmail}</span>
-                </div>
-                <div className="px-2 py-0.5 bg-neutral-100 rounded text-neutral-900 font-bold border border-neutral-200">
-                  SECURE OTP
-                </div>
-              </div>
-
-              {otpError && (
-                <div className="p-3 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl text-center">
-                  {otpError}
-                </div>
-              )}
-
-              {/* Sequential Form */}
-              <form onSubmit={handleVerifyOtp1Submit} className="space-y-4 text-xs">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 font-mono tracking-wider text-center block uppercase">
-                    ENTER INBOX SECURITY OTP
-                  </label>
+                <form onSubmit={handleVerifyCert} className="flex gap-2">
                   <input
                     type="text"
                     required
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={e => setOtpCode(e.target.value)}
-                    placeholder="XXXXXX"
-                    className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3.5 text-center text-lg font-mono tracking-widest text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                    value={verifyingCertId}
+                    onChange={(e) => setVerifyingCertId(e.target.value)}
+                    placeholder="e.g. CERT-THAM-904821"
+                    className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm font-mono text-neutral-900 focus:outline-none focus:bg-white"
                   />
-                </div>
+                  <button
+                    type="submit"
+                    disabled={certChecking}
+                    className="px-6 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-semibold text-sm transition cursor-pointer"
+                  >
+                    {certChecking ? "Checking..." : "Verify"}
+                  </button>
+                </form>
 
-                <button
-                  type="submit"
-                  className="w-full py-3.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold tracking-wider transition shadow-sm cursor-pointer"
-                >
-                  VERIFY WORKSPACE CREDENTIAL
-                </button>
-              </form>
-
-              <div className="pt-4 border-t border-neutral-100 text-center">
-                <p className="text-[10px] text-neutral-400 leading-relaxed font-mono">
-                  Singapore SLA security protocols enforce a strict 10-minute expiry on keys. In sandbox, check Node.js process logs on your dashboard.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* PUBLIC CERTIFICATE VERIFICATION PORTAL */}
-        {activeTab === "verify-cert" && (
-          <div className="max-w-4xl mx-auto px-4 py-12 space-y-8 animate-fadeIn" id="public_verification_page">
-            <div className="bg-white p-8 rounded-3xl border border-neutral-200/80 shadow-xl text-center max-w-xl mx-auto space-y-6">
-              <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center mx-auto text-neutral-950">
-                <FileCheck className="w-6 h-6 animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="font-display font-bold text-2xl text-neutral-900">Certificate Validation Gateway</h2>
-                <p className="text-xs text-neutral-500">Validate cryptographic signatures and authentic credentials issued to white hat cadets.</p>
-              </div>
-
-              {certSearchError && (
-                <div className="p-3.5 bg-red-50 border border-red-200 text-xs font-mono text-red-800 rounded-xl">
-                  {certSearchError}
-                </div>
-              )}
-
-              <form onSubmit={handleCertSearch} className="flex gap-2 text-xs">
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter Certificate Serial (e.g. CERT-17120...)"
-                  value={searchCertQuery || verifyingCertId}
-                  onChange={e => { setSearchCertQuery(e.target.value); setVerifyingCertId(""); }}
-                  className="flex-1 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                />
-                <button
-                  type="submit"
-                  className="px-6 bg-neutral-900 hover:bg-neutral-800 text-white font-bold rounded-xl transition shadow-sm cursor-pointer"
-                >
-                  Verify
-                </button>
-              </form>
-
-              <p className="text-[10px] text-neutral-500 font-mono">
-                Registry Synced • SLA Singapore. All validated ledgers undergo continuous cryptographic checks.
-              </p>
-            </div>
-
-            {/* Verified Cert details card */}
-            {verifiedCert && (
-              <div className="p-10 max-w-2xl mx-auto rounded-3xl bg-white border border-neutral-200 text-left relative overflow-hidden shadow-xl space-y-8 animate-fadeIn" id="verified_cert_output">
-                <div className="absolute inset-0 cyber-grid opacity-[0.2] pointer-events-none" />
-                <div className="absolute top-4 right-4 w-20 h-20 bg-neutral-100 rounded-full blur-xl pointer-events-none" />
-                
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2 text-neutral-900">
-                    <CheckCircle2 className="w-5 h-5 text-neutral-900" />
-                    <span className="font-display font-bold text-xs tracking-wider uppercase">THAMJJ13 SECURITY VERIFIED</span>
+                {certResult && (
+                  <div
+                    className={`p-5 rounded-2xl border ${
+                      certResult.valid
+                        ? "bg-emerald-50/70 border-emerald-200 text-emerald-950"
+                        : "bg-red-50/70 border-red-200 text-red-900"
+                    }`}
+                  >
+                    {certResult.valid && certResult.certificate ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span>AUTHENTIC CREDENTIAL VERIFIED</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-200/60">
+                          <div>
+                            <span className="text-neutral-500 block">Recipient</span>
+                            <span className="font-semibold">
+                              {certResult.certificate.studentName}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 block">Course</span>
+                            <span className="font-semibold">
+                              {certResult.certificate.courseTitle}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 block">Issued Date</span>
+                            <span className="font-mono">
+                              {new Date(
+                                certResult.certificate.issueDate
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-neutral-500 block">
+                              Verification Hash
+                            </span>
+                            <span className="font-mono">
+                              {certResult.certificate.verificationHash}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs font-medium">
+                        <XCircle className="w-4 h-4 shrink-0 text-red-600" />
+                        <span>
+                          No valid certificate found matching that ID or hash.
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-[9px] font-mono bg-neutral-50 border border-neutral-200 text-neutral-600 px-3 py-1 rounded-md">
-                    ID: {verifiedCert.id}
-                  </span>
-                </div>
-
-                <div className="space-y-4 text-center py-6">
-                  <h2 className="text-neutral-500 text-[10px] font-mono tracking-widest uppercase font-bold">OFFICIAL RECORD OF ACHIEVEMENT</h2>
-                  <h1 className="text-2xl md:text-3xl font-display font-bold text-neutral-900 tracking-tight">{verifiedCert.studentName}</h1>
-                  <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
-                    has successfully completed all laboratory benchmarks and final MCQ cryptographic trials, satisfying all parameters for:
-                  </p>
-                  <h3 className="text-base font-display font-bold text-neutral-900 bg-neutral-100 border border-neutral-200 py-2.5 px-4 rounded-xl inline-block">{verifiedCert.courseTitle}</h3>
-                </div>
-
-                <div className="flex flex-col sm:flex-row justify-between items-center pt-6 border-t border-neutral-200 gap-6">
-                  <div className="text-[10px] font-mono space-y-1.5 text-neutral-500">
-                    <p><strong>ISSUING ENTITY:</strong> {verifiedCert.issuedBy}</p>
-                    <p><strong>TIMESTAMP:</strong> {verifiedCert.issuedAt}</p>
-                    <p className="text-neutral-900 font-bold"><strong>CRYPTO LEDGER STATE:</strong> SIGNED & VALID</p>
-                  </div>
-
-                  <div className="px-4 py-2 bg-neutral-100 border border-neutral-200 text-neutral-900 font-mono text-[10px] rounded-xl font-bold shadow-sm">
-                    ✓ SECURE SIGNATURE OK
-                  </div>
-                </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
-      {/* 3. REAL-TIME LIVE SOC MESSAGE WIDGET */}
-      <LiveChatWidget 
-        currentSessionId={chatSessionId} 
-        setSessionId={setChatSessionId} 
-        currentUser={currentUser} 
+      <LiveChatWidget
+        currentSessionId={chatSessionId}
+        setSessionId={setChatSessionId}
+        currentUser={currentUser}
       />
     </div>
   );
