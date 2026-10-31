@@ -1,5 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
-import { getSetting, setSetting } from "./db";
+import { getSetting, setSetting, cleanEnvValue, isPlaceholderEnv } from "./db";
 import { CloudinaryConfig } from "../types";
 
 interface StoredCloudinarySettings {
@@ -9,15 +9,20 @@ interface StoredCloudinarySettings {
   uploadPreset: string;
 }
 
+function sanitizeCred(val?: string): string {
+  const cleaned = cleanEnvValue(val);
+  return isPlaceholderEnv(cleaned) ? "" : cleaned;
+}
+
 function parseCloudinaryUrlEnv(): Partial<StoredCloudinarySettings> {
-  const raw = (process.env.CLOUDINARY_URL || "").trim();
+  const raw = cleanEnvValue(process.env.CLOUDINARY_URL);
   if (!raw.startsWith("cloudinary://")) return {};
   try {
     const parsed = new URL(raw);
     return {
-      cloudName: parsed.hostname || "",
-      apiKey: decodeURIComponent(parsed.username || ""),
-      apiSecret: decodeURIComponent(parsed.password || ""),
+      cloudName: sanitizeCred(parsed.hostname),
+      apiKey: sanitizeCred(decodeURIComponent(parsed.username || "")),
+      apiSecret: sanitizeCred(decodeURIComponent(parsed.password || "")),
     };
   } catch {
     return {};
@@ -28,10 +33,10 @@ export async function resolveCloudinaryCredentials(): Promise<
   StoredCloudinarySettings & { source: "ENV" | "DATABASE" | "NONE"; configured: boolean }
 > {
   const fromUrl = parseCloudinaryUrlEnv();
-  const envCloudName = (process.env.CLOUDINARY_CLOUD_NAME || fromUrl.cloudName || "").trim();
-  const envApiKey = (process.env.CLOUDINARY_API_KEY || fromUrl.apiKey || "").trim();
-  const envApiSecret = (process.env.CLOUDINARY_API_SECRET || fromUrl.apiSecret || "").trim();
-  const envPreset = (process.env.CLOUDINARY_UPLOAD_PRESET || "").trim();
+  const envCloudName = sanitizeCred(process.env.CLOUDINARY_CLOUD_NAME) || fromUrl.cloudName || "";
+  const envApiKey = sanitizeCred(process.env.CLOUDINARY_API_KEY) || fromUrl.apiKey || "";
+  const envApiSecret = sanitizeCred(process.env.CLOUDINARY_API_SECRET) || fromUrl.apiSecret || "";
+  const envPreset = sanitizeCred(process.env.CLOUDINARY_UPLOAD_PRESET);
 
   const stored = (await getSetting<StoredCloudinarySettings>("cloudinary_settings")) || {
     cloudName: "",

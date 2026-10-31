@@ -287,7 +287,8 @@ export interface SystemHealthMetrics {
   activeConnections: number;
   uptime: string;
   databaseEngine: string;
-  databaseStatus: "CONNECTED" | "LOCAL_REPLICA" | "ERROR";
+  databaseStatus: "CONNECTED" | "LOCAL_REPLICA" | "FALLBACK_LOCAL" | "ERROR";
+  databaseError?: string;
   resendStatus: "CONNECTED" | "UNCONFIGURED";
   senderEmail: string;
   cloudinaryStatus: "CONNECTED" | "DISCONNECTED" | "UNCONFIGURED";

@@ -1,42 +1,182 @@
 import { createClient, Client } from "@libsql/client";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import fs from "fs";
 import path from "path";
 import { UserRole, UserProfile } from "../types";
 
 let tursoClient: Client | null = null;
 let initPromise: Promise<void> | null = null;
-let databaseMode: "CONNECTED" | "LOCAL_REPLICA" | "ERROR" = "LOCAL_REPLICA";
+let databaseMode: "CONNECTED" | "LOCAL_REPLICA" | "FALLBACK_LOCAL" | "ERROR" =
+  "LOCAL_REPLICA";
+let lastDatabaseError: string | undefined = undefined;
+let configuredRemoteHost: string | undefined = undefined;
 
-export function getDbMode(): "CONNECTED" | "LOCAL_REPLICA" | "ERROR" {
+export function cleanEnvValue(raw?: string): string {
+  if (!raw) return "";
+  let val = raw.trim();
+  if (
+    (val.startsWith('"') && val.endsWith('"')) ||
+    (val.startsWith("'") && val.endsWith("'")) ||
+    (val.startsWith("`") && val.endsWith("`"))
+  ) {
+    val = val.slice(1, -1).trim();
+  }
+  return val;
+}
+
+export function isPlaceholderEnv(val: string): boolean {
+  if (!val) return true;
+  const lower = val.toLowerCase();
+  return (
+    lower.includes("your-database-org.turso.io") ||
+    lower.includes("your-turso-auth-token") ||
+    lower.includes("your-cloud-name") ||
+    lower.includes("your-cloudinary-api") ||
+    lower.includes("re_your_resend_api_key") ||
+    lower.includes("<your-") ||
+    lower === "changeme" ||
+    lower === "placeholder"
+  );
+}
+
+function resolveLocalSqliteUrl(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return "file:/tmp/thamjj13-turso.db";
+  }
+  try {
+    fs.accessSync(process.cwd(), fs.constants.W_OK);
+    return `file:${path.join(process.cwd(), "thamjj13-local.db")}`;
+  } catch {
+    return "file:/tmp/thamjj13-turso.db";
+  }
+}
+
+function normalizeRemoteTursoUrl(rawInput: string): {
+  url: string;
+  host?: string;
+  invalidReason?: string;
+} {
+  let cleaned = cleanEnvValue(rawInput);
+  if (!cleaned) return { url: "" };
+
+  // Strip accidental KEY= prefix when pasted into dashboard env UI
+  cleaned = cleaned.replace(/^(TURSO_DATABASE_URL|LIBSQL_URL)\s*=\s*/i, "").trim();
+  cleaned = cleanEnvValue(cleaned);
+
+  if (!cleaned || isPlaceholderEnv(cleaned)) {
+    return {
+      url: "",
+      invalidReason:
+        "TURSO_DATABASE_URL is set to the .env.example placeholder (your-database-org.turso.io). Replace it with your real Turso database URL (libsql://<db-name>-<org>.turso.io).",
+    };
+  }
+
+  if (cleaned.startsWith("file:") || cleaned === ":memory:") {
+    return { url: cleaned };
+  }
+
+  // Add libsql:// if scheme was omitted on a *.turso.io hostname
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(cleaned) && cleaned.includes(".turso.io")) {
+    cleaned = `libsql://${cleaned}`;
+  }
+
+  try {
+    const parsedUrl = new URL(
+      cleaned.replace(/^libsql:\/\//i, "https://").replace(/^wss:\/\//i, "https://")
+    );
+    const host = parsedUrl.host;
+
+    if (
+      host === "app.turso.tech" ||
+      host === "api.turso.tech" ||
+      host === "turso.tech" ||
+      host.endsWith(".turso.tech")
+    ) {
+      return {
+        url: "",
+        host,
+        invalidReason: `TURSO_DATABASE_URL points to "${host}" (Turso web dashboard/API) instead of a database instance URL. Use "libsql://<db-name>-<org-slug>.turso.io" from your Turso Database Connect dialog.`,
+      };
+    }
+
+    // Strip accidental Hrana internal path suffixes or trailing slashes so @libsql/client doesn't 404 on /path/v2/pipeline
+    let normalizedScheme = cleaned.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//)?.[1]?.toLowerCase() || "libsql";
+    if (!["libsql", "https", "http", "wss", "ws"].includes(normalizedScheme)) {
+      normalizedScheme = "libsql";
+    }
+    const cleanPath = parsedUrl.pathname
+      .replace(/\/(v2|v3|v3-protobuf)(\/(pipeline|cursor))?\/?$/i, "")
+      .replace(/\/+$/, "");
+
+    const finalUrl = `${normalizedScheme}://${host}${cleanPath}${parsedUrl.search}`;
+    return { url: finalUrl, host };
+  } catch {
+    return {
+      url: "",
+      invalidReason: `TURSO_DATABASE_URL ("${cleaned.slice(0, 48)}") is not a valid URL. Expected format: libsql://<db-name>-<org-slug>.turso.io`,
+    };
+  }
+}
+
+function explainTursoConnectionError(err: any, host?: string): string {
+  const rawMsg = String(err?.message || err || "Unknown LibSQL error");
+  const status = err?.cause?.status || (rawMsg.includes("status 404") ? 404 : rawMsg.includes("status 401") ? 401 : undefined);
+  const target = host ? ` (${host})` : "";
+
+  if (status === 404 || rawMsg.includes("status 404")) {
+    return `Turso server${target} returned HTTP 404 (Database Not Found). Verify that TURSO_DATABASE_URL matches an active Turso database ("libsql://<db-name>-<org-slug>.turso.io" from "turso db show <name> --url") and has no typos or deleted DB name.`;
+  }
+  if (status === 401 || status === 403 || rawMsg.includes("401") || rawMsg.includes("JWT")) {
+    return `Turso server${target} rejected authentication (${status || "401/403"}). Generate a fresh token via "turso db tokens create <db-name>" and update TURSO_AUTH_TOKEN.`;
+  }
+  return `Unable to reach remote Turso database${target}: ${rawMsg}`;
+}
+
+export function getDbMode(): "CONNECTED" | "LOCAL_REPLICA" | "FALLBACK_LOCAL" | "ERROR" {
   return databaseMode;
+}
+
+export function getDbError(): string | undefined {
+  return lastDatabaseError;
 }
 
 export function getTursoClient(): Client {
   if (!tursoClient) {
-    const remoteUrl = (
-      process.env.TURSO_DATABASE_URL ||
-      process.env.LIBSQL_URL ||
-      ""
-    ).trim();
-    const authToken = (
-      process.env.TURSO_AUTH_TOKEN ||
-      process.env.LIBSQL_AUTH_TOKEN ||
-      ""
-    ).trim();
+    const rawRemoteUrl =
+      process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || "";
+    const rawAuthToken =
+      process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || "";
 
-    if (remoteUrl) {
-      tursoClient = createClient({
-        url: remoteUrl,
-        authToken: authToken || undefined,
-      });
-      databaseMode = remoteUrl.startsWith("file:") ? "LOCAL_REPLICA" : "CONNECTED";
+    const authToken = cleanEnvValue(rawAuthToken);
+    const validToken = isPlaceholderEnv(authToken) ? undefined : authToken || undefined;
+    const normalized = normalizeRemoteTursoUrl(rawRemoteUrl);
+
+    if (normalized.invalidReason) {
+      lastDatabaseError = normalized.invalidReason;
+      console.warn(`⚠️ [TURSO CONFIG WARNING] ${normalized.invalidReason}`);
+    }
+
+    if (normalized.url) {
+      try {
+        configuredRemoteHost = normalized.host;
+        tursoClient = createClient({
+          url: normalized.url,
+          authToken: validToken,
+        });
+        databaseMode = normalized.url.startsWith("file:")
+          ? "LOCAL_REPLICA"
+          : "CONNECTED";
+      } catch (err) {
+        const msg = explainTursoConnectionError(err, normalized.host);
+        lastDatabaseError = msg;
+        console.warn(`⚠️ [TURSO CLIENT FALLBACK] ${msg}`);
+        tursoClient = createClient({ url: resolveLocalSqliteUrl() });
+        databaseMode = "FALLBACK_LOCAL";
+      }
     } else {
-      const localFile = process.env.VERCEL
-        ? "file:/tmp/thamjj13-turso.db"
-        : `file:${path.join(process.cwd(), "thamjj13-local.db")}`;
-      tursoClient = createClient({ url: localFile });
-      databaseMode = "LOCAL_REPLICA";
+      tursoClient = createClient({ url: resolveLocalSqliteUrl() });
+      databaseMode = normalized.invalidReason ? "FALLBACK_LOCAL" : "LOCAL_REPLICA";
     }
   }
   return tursoClient;
@@ -54,7 +194,34 @@ export async function ensureDatabaseInitialized(): Promise<void> {
 }
 
 async function runMigrationsAndBootstrap(): Promise<void> {
-  const db = getTursoClient();
+  let db = getTursoClient();
+
+  // Verify connectivity if pointing to a remote Turso URL; gracefully fall back if misconfigured
+  if (databaseMode === "CONNECTED") {
+    try {
+      await db.execute("SELECT 1");
+      lastDatabaseError = undefined;
+    } catch (err) {
+      const explanation = explainTursoConnectionError(err, configuredRemoteHost);
+      lastDatabaseError = explanation;
+      console.error("================================================================");
+      console.error("⚠️ REMOTE TURSO CONNECTION FAILED — ACTIVATING SAFE FALLBACK");
+      console.error(`Reason: ${explanation}`);
+      console.error("Fix: Update TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in your Render/Vercel Environment Variables.");
+      console.error("================================================================");
+
+      if (process.env.STRICT_TURSO === "true") {
+        throw err;
+      }
+
+      try {
+        db.close();
+      } catch {}
+      tursoClient = createClient({ url: resolveLocalSqliteUrl() });
+      databaseMode = "FALLBACK_LOCAL";
+      db = tursoClient;
+    }
+  }
 
   const schemaStatements = [
     `CREATE TABLE IF NOT EXISTS users (
@@ -319,12 +486,12 @@ async function runMigrationsAndBootstrap(): Promise<void> {
 }
 
 async function bootstrapAdminFromEnv(): Promise<void> {
-  const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || "";
-  const adminUsername = (process.env.ADMIN_USERNAME || "thamjj13_admin").trim();
-  const adminPhone = (process.env.ADMIN_PHONE || "+65 09638233943").trim();
+  const adminEmail = cleanEnvValue(process.env.ADMIN_EMAIL).toLowerCase();
+  const adminPassword = cleanEnvValue(process.env.ADMIN_PASSWORD);
+  const adminUsername = cleanEnvValue(process.env.ADMIN_USERNAME) || "thamjj13_admin";
+  const adminPhone = cleanEnvValue(process.env.ADMIN_PHONE) || "+65 09638233943";
 
-  if (!adminEmail || !adminPassword) {
+  if (!adminEmail || !adminPassword || isPlaceholderEnv(adminEmail) || isPlaceholderEnv(adminPassword)) {
     return;
   }
 
