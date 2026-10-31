@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { getTursoClient, getSetting, setSetting } from "./db";
+import { getTursoClient, getSetting, setSetting, cleanEnvValue, isPlaceholderEnv } from "./db";
 import { MailLog, ResendConfig, Report, Certificate, OtpPurpose } from "../types";
 
 export const DEFAULT_SENDER_EMAIL = "no-reply@thamjj13.top";
@@ -31,19 +31,25 @@ export async function resolveResendConfig(): Promise<{
   apiKeySource: "ENV" | "DATABASE" | "NONE";
 }> {
   const stored = (await getSetting<StoredResendSettings>("resend_settings")) || {};
-  const envKey = (process.env.RESEND_API_KEY || "").trim();
-  const dbKey = (stored.apiKey || "").trim();
+  const rawEnvKey = cleanEnvValue(process.env.RESEND_API_KEY);
+  const envKey = isPlaceholderEnv(rawEnvKey) ? "" : rawEnvKey;
+  const rawDbKey = cleanEnvValue(stored.apiKey);
+  const dbKey = isPlaceholderEnv(rawDbKey) ? "" : rawDbKey;
   const apiKey = envKey || dbKey;
 
   const rawFromEmail = (
-    process.env.RESEND_FROM_EMAIL ||
-    stored.fromEmail ||
+    cleanEnvValue(process.env.RESEND_FROM_EMAIL) ||
+    cleanEnvValue(stored.fromEmail) ||
     DEFAULT_SENDER_EMAIL
   ).trim();
 
   // Support either bare address "no-reply@thamjj13.top" or formatted "Name <no-reply@thamjj13.top>"
   let fromEmail = rawFromEmail;
-  let fromName = (process.env.RESEND_FROM_NAME || stored.fromName || DEFAULT_SENDER_NAME).trim();
+  let fromName = (
+    cleanEnvValue(process.env.RESEND_FROM_NAME) ||
+    cleanEnvValue(stored.fromName) ||
+    DEFAULT_SENDER_NAME
+  ).trim();
 
   const match = rawFromEmail.match(/^(.+?)\s*<([^>]+)>$/);
   if (match) {

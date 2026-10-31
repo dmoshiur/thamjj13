@@ -30,6 +30,7 @@ import {
   ensureDatabaseInitialized,
   getTursoClient,
   getDbMode,
+  getDbError,
   getSetting,
   setSetting,
   writeAuditLog,
@@ -254,6 +255,7 @@ app.get("/api/health", async (_req, res) => {
   res.json({
     ok: true,
     database: getDbMode(),
+    databaseError: getDbError() || null,
     resendConfigured: resendCfg.apiKeyConfigured,
     senderEmail: resendCfg.fromEmail,
     cloudinaryConfigured: cloudCfg.configured,
@@ -288,6 +290,7 @@ app.get("/api/system-health", async (_req, res) => {
     uptime: `${days}d ${hours}h ${mins}m`,
     databaseEngine: "Turso (LibSQL)",
     databaseStatus: getDbMode(),
+    databaseError: getDbError(),
     resendStatus: resendCfg.apiKeyConfigured ? "CONNECTED" : "UNCONFIGURED",
     senderEmail: resendCfg.fromEmail || DEFAULT_SENDER_EMAIL,
     cloudinaryStatus: cloudCfg.configured ? "CONNECTED" : "UNCONFIGURED",

@@ -784,6 +784,15 @@ export default function AdminPortal({
 
       {/* MAIN WORKSPACE */}
       <section className="lg:col-span-9 space-y-6">
+        {health?.databaseError && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-1 shadow-sm">
+            <div className="font-mono font-bold uppercase text-[10px] text-amber-800 flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-amber-700" /> Turso Cloud Connection Diagnostic (Running on Safe Local Fallback)
+            </div>
+            <p className="leading-relaxed">{health.databaseError}</p>
+          </div>
+        )}
+
         {/* 1. TELEMETRY & VISITOR ANALYTICS */}
         {activeTab === "dashboard" && (
           <motion.div
@@ -800,7 +809,14 @@ export default function AdminPortal({
                 <h4 className="font-display font-bold text-lg text-neutral-900 mt-2">
                   {health?.databaseEngine || "Turso (LibSQL)"}
                 </h4>
-                <p className="text-[11px] font-mono text-emerald-700 mt-1">
+                <p
+                  className={`text-[11px] font-mono mt-1 ${
+                    health?.databaseStatus === "FALLBACK_LOCAL" ||
+                    health?.databaseStatus === "ERROR"
+                      ? "text-amber-700 font-bold"
+                      : "text-emerald-700"
+                  }`}
+                >
                   Mode: {health?.databaseStatus || "ACTIVE"}
                 </p>
               </div>
